@@ -20,6 +20,14 @@
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
+struct new_thread {
+	struct thread *t;
+	int64_t timer;
+	struct list_elem o;  
+};
+
+static struct list waiting_list;
+
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -90,11 +98,19 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
-
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	enum intr_level old_level;
+	old_level = intr_disable();
+	
+	int64_t start = timer_ticks ();
+	struct new_thread new_t;
+	new_t.t = thread_current();
+	
+	new_t.timer = ticks + start;
+	list_push_back (&waiting_list, &new_t);
+	thread_block();
+
+	intr_set_level(old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -125,7 +141,25 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+	enum intr_level old_level;
+	old_level = intr_disable();
+	struct list_elem *e;
+
+	e = list_begin(&waiting_list);
+	while(e != list_end(&waiting_list)) {
+		// Convert e to new thread
+		struct new_thread *a;
+		a = list_entry(e, struct new_thread, o);
+		if (ticks >= a -> timer) {
+			thread_unblock(a -> t);
+			e = list_remove(e);
+		} else {
+			e = list_next(e);
+		}
+	}
+	
 	thread_tick ();
+	intr_set_level(old_level);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
