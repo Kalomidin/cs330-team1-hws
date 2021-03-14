@@ -49,7 +49,7 @@ timer_init (void) {
 	outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
 	outb (0x40, count & 0xff);
 	outb (0x40, count >> 8);
-
+	list_init(&waiting_list);
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
 
@@ -107,7 +107,7 @@ timer_sleep (int64_t ticks) {
 	new_t.t = thread_current();
 	
 	new_t.timer = ticks + start;
-	list_push_back (&waiting_list, &new_t);
+	list_push_back (&waiting_list, &new_t.o);
 	thread_block();
 
 	intr_set_level(old_level);
@@ -144,7 +144,6 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	enum intr_level old_level;
 	old_level = intr_disable();
 	struct list_elem *e;
-
 	e = list_begin(&waiting_list);
 	while(e != list_end(&waiting_list)) {
 		// Convert e to new thread
@@ -157,7 +156,6 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 			e = list_next(e);
 		}
 	}
-	
 	thread_tick ();
 	intr_set_level(old_level);
 }
