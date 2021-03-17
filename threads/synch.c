@@ -190,6 +190,7 @@ lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	lock->holder = NULL;
+	lock->priority = 0;
 	sema_init (&lock->semaphore, 1);
 }
 
@@ -256,7 +257,7 @@ lock_release (struct lock *lock) {
 	if ( !is_idle_thread(curr) && !list_empty(&curr->owned_locks)) {
 		/* 1. Remove the lock from the owned locks of the holder thread */
 		list_remove(&lock->elem);
-		
+
 		// struct list_elem *e;
 		// e = list_begin(&curr->owned_locks);
 		// while(e != list_end(&curr->owned_locks)) {
