@@ -91,11 +91,13 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-	struct list priority_elems;
-	int owned_priority;
+	struct list owned_locks;			/* Owned locks by the thread */
+	int owned_priority;					/* Given Priority for the thread */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+
+	struct lock *holder_lock;			/* The lock that is holding the thread from proceeding(the one it is waiting to unlock)*/
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -135,7 +137,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
-
+void thread_update_holder(struct thread *t);
 int thread_get_priority (void);
 void thread_set_priority (int);
 

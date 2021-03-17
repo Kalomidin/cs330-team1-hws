@@ -210,19 +210,14 @@ lock_acquire (struct lock *lock) {
 		int holder_priority = (lock->holder)->priority;
 		int curr_priority = thread_get_priority();
 		if (curr_priority > holder_priority) {
-			if (holder_priority != lock->holder->owned_priority) {
-				// TODO: Find and remove prio_elem
-				// struct priority_elem prio_elem;
-				// prio_elem.priority = holder_priority;
-			}
 			lock->holder->priority = curr_priority;
-			
-			// struct priority_elem curr_prio_elem;
-			// curr_prio_elem.priority = curr_priority;
-			//list_push_back(&lock->holder->priority_elems, &curr_prio_elem.elem);
+			lock->priority = curr_priority;
+			thread_current()->holder_lock = lock;
+			thread_update_holder(lock->holder);
 		}
 	}
 	sema_down (&lock->semaphore);
+	list_push_back(&thread_current()->owned_locks, &lock->elem);
 	lock->holder = thread_current ();
 }
 
@@ -255,7 +250,45 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-	thread_current()->priority = thread_current()->owned_priority;
+
+	// Update the current thread's priority 
+	struct thread *curr = thread_current();
+	if ( !is_idle_thread(curr) && !list_empty(&curr->owned_locks)) {
+		/* 1. Remove the lock from the owned locks of the holder thread */
+		list_remove(&lock->elem);
+		
+		// struct list_elem *e;
+		// e = list_begin(&curr->owned_locks);
+		// while(e != list_end(&curr->owned_locks)) {
+		// 	struct lock *a;
+		// 	a = list_entry(e, struct lock, elem);
+		// 	if (a == lock) {
+		// 		break;
+		// 	}
+		// }
+		
+		/* 2. Set new priority if necessary */
+		if (curr->priority == lock->priority && !list_empty(&curr->owned_locks)) {
+			struct list_elem *e;
+			e = list_begin(&curr->owned_locks);
+			int highest_priority = list_entry(e, struct lock, elem)->priority;
+			while(e != list_end(&curr->owned_locks)) {
+				struct lock *a;
+				a = list_entry(e, struct lock, elem);
+				if (a->priority > highest_priority) {
+					highest_priority = a->priority;
+				}
+				e = list_next(e);
+			}
+			if (curr->owned_priority >= highest_priority) {
+				curr->priority = curr->owned_priority;
+			} else {
+				curr->priority = highest_priority;
+			}
+		} else if (list_empty(&curr->owned_locks)) {
+			curr->priority = curr->owned_priority;
+		}
+	}
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }

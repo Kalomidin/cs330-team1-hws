@@ -251,6 +251,18 @@ thread_name (void) {
 	return thread_current ()->name;
 }
 
+void thread_update_holder(struct thread *t) {
+	if (t->holder_lock != NULL) {
+		if (t->holder_lock->priority < t->priority) {
+			t->holder_lock->priority = t->priority;
+			if (t->holder_lock->priority > t->holder_lock->holder->priority) {
+				t->holder_lock->holder->priority = t->priority;
+				thread_update_holder(t->holder_lock->holder);
+			}
+		}
+	}
+}
+
 /* Returns the running thread.
    This is running_thread() plus a couple of sanity checks.
    See the big comment at the top of thread.h for details. */
@@ -310,12 +322,11 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
-	thread_current()->owned_priority = new_priority;
-
-	// TODO: What if it owns a lock and some other thread waiting 
-	// for the lock has higher `priority` than the `new_priority`?
-
+	struct thread *curr = thread_current();
+	if (curr->owned_priority == curr->priority) {
+		curr->priority = new_priority;
+	} 
+	curr->owned_priority = new_priority;
 	thread_yield();
 }
 
@@ -415,9 +426,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 	// Initialize the list and owned priority value
-	list_init(&t->priority_elems);
+	list_init(&t->owned_locks);
 	t->owned_priority = priority;
-	// printf("List is initialized %d\n",list_empty(&t->priority_elems));
 }
 
 bool is_idle_thread(struct thread *thread) {
