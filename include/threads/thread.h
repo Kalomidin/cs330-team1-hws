@@ -91,6 +91,8 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	struct list priority_elems;
+	int owned_priority;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -119,7 +121,8 @@ void thread_start (void);
 
 void thread_tick (void);
 void thread_print_stats (void);
-
+bool is_idle_thread(struct thread *thread);
+ 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
@@ -142,5 +145,10 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+struct priority_elem {
+	int priority;
+	struct list_elem elem;
+};
 
 #endif /* threads/thread.h */

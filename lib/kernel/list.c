@@ -75,6 +75,7 @@ list_begin (struct list *list) {
    undefined if ELEM is itself a list tail. */
 struct list_elem *
 list_next (struct list_elem *elem) {
+	// printf("Downing the sema: %d, %d, %d, %d\n\n", is_head(elem), is_interior(elem), elem == NULL, is_tail(elem));
 	ASSERT (is_head (elem) || is_interior (elem));
 	return elem->next;
 }

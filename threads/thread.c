@@ -298,7 +298,6 @@ void
 thread_yield (void) {
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
-
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
@@ -410,6 +409,14 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	// Initialize the list and owned priority value
+	list_init(&t->priority_elems);
+	t->owned_priority = priority;
+	// printf("List is initialized %d\n",list_empty(&t->priority_elems));
+}
+
+bool is_idle_thread(struct thread *thread) {
+	return thread == idle_thread;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -419,9 +426,10 @@ init_thread (struct thread *t, const char *name, int priority) {
    idle_thread. */
 static struct thread *
 next_thread_to_run (void) {
-	if (list_empty (&ready_list))
+	if (list_empty (&ready_list)) {
+		// printf("Yield thread");
 		return idle_thread;
-	else {
+	} else {
 		struct list_elem *e;
 		e = list_begin(&ready_list);
 		struct thread *highest_priority = list_entry(e, struct thread, elem);
@@ -559,7 +567,6 @@ static void
 schedule (void) {
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
-
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
 	ASSERT (is_thread (next));
