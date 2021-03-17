@@ -311,6 +311,11 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	thread_current()->owned_priority = new_priority;
+
+	// TODO: What if it owns a lock and some other thread waiting 
+	// for the lock has higher `priority` than the `new_priority`?
+
 	thread_yield();
 }
 

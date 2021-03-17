@@ -206,7 +206,22 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
-
+	if ((&lock->semaphore)->value == 0 && lock->holder != NULL) {
+		int holder_priority = (lock->holder)->priority;
+		int curr_priority = thread_get_priority();
+		if (curr_priority > holder_priority) {
+			if (holder_priority != lock->holder->owned_priority) {
+				// TODO: Find and remove prio_elem
+				// struct priority_elem prio_elem;
+				// prio_elem.priority = holder_priority;
+			}
+			lock->holder->priority = curr_priority;
+			
+			// struct priority_elem curr_prio_elem;
+			// curr_prio_elem.priority = curr_priority;
+			//list_push_back(&lock->holder->priority_elems, &curr_prio_elem.elem);
+		}
+	}
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
 }
@@ -240,7 +255,7 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-
+	thread_current()->priority = thread_current()->owned_priority;
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
