@@ -210,7 +210,7 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
-	t->recent_cpu = 0;
+	t->recent_cpu = thread_current()->recent_cpu;
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -502,6 +502,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	// Initialize the list and owned priority value
 	list_init(&t->owned_locks);
 	t->owned_priority = priority;
+	t->nice = 0;
+	t->recent_cpu = 0;
+	t->timer = 0;
 }
 
 bool is_idle_thread(struct thread *thread) {
@@ -715,30 +718,30 @@ void update_mlfqs(int ticks, struct list *waiting_list) {
 	if (ticks%100 == 0) {
 		update_load_avg();
 		
-		// // Update current thread's recent cpu
-		// if (!is_idle_thread(curr)) {
-		// 	thread_update_recent_cpu(curr);
-		// }
+		// Update current thread's recent cpu
+		if (!is_idle_thread(curr)) {
+			thread_update_recent_cpu(curr);
+		}
 
-		// // Update waiting list's recent cpu
+		// // // Update waiting list's recent cpu
 		// update_recent_cpu_all(waiting_list);
 
 		// // Update ready list's recent cpu
 		// update_recent_cpu_all(&ready_list);
 	}
-	if (ticks%4 == 0) {
+	// if (ticks%4 == 0) {
 
-		// Update current thread's recent cpu
-		if (!is_idle_thread(curr)) {
-			thread_update_priority(curr);
-		}
+	// 	// Update current thread's recent cpu
+	// 	if (!is_idle_thread(curr)) {
+	// 		thread_update_priority(curr);
+	// 	}
 
-		// Update waiting list's recent cpu
-		update_priority_all(waiting_list);
+	// 	// Update waiting list's recent cpu
+	// 	update_priority_all(waiting_list);
 
-		// Update ready list's recent cpu
-		update_priority_all(&ready_list);
-	}
+	// 	// Update ready list's recent cpu
+	// 	update_priority_all(&ready_list);
+	// }
 }
 
 void update_recent_cpu_all(struct list *threads) {
