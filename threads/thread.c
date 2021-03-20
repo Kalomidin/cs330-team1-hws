@@ -728,15 +728,15 @@ void update_mlfqs(int ticks, struct list *waiting_list) {
 		update_load_avg();
 		
 		// Update current thread's recent cpu
-		// if (!is_idle_thread(curr)) {
-		// 	thread_update_recent_cpu(curr);
-		// }
+		if (!is_idle_thread(curr)) {
+			thread_update_recent_cpu(curr);
+		}
 
-		// // // Update waiting list's recent cpu
-		// update_recent_cpu_all(waiting_list);
+		// // Update waiting list's recent cpu
+		update_recent_cpu_all(waiting_list);
 
-		// // Update ready list's recent cpu
-		// update_recent_cpu_all(&ready_list);
+		// Update ready list's recent cpu
+		update_recent_cpu_all(&ready_list);
 	}
 	if (ticks%4 == 0) {
 

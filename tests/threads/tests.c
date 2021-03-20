@@ -40,6 +40,8 @@ static const struct test tests[] =
     {"mlfqs-block", test_mlfqs_block},
   };
 
+// pintos -- -q -mlfqs run mlfqs-nice-10 | tee tests/threads/mlfqs-nice-special-10.result
+
 static const char *test_name;
 
 /* Runs the test named NAME. */
