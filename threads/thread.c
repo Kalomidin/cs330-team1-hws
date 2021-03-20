@@ -210,7 +210,12 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
-	t->recent_cpu = thread_current()->recent_cpu;
+	
+	if (!is_idle_thread(thread_current())) {
+			t->recent_cpu = thread_current()->recent_cpu;
+	} else {
+		t->recent_cpu = 0;
+	}
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -330,6 +335,9 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+	if (thread_mlfqs) {
+		return;
+	}
 	struct thread *curr = thread_current();
 	if (curr->owned_priority == curr->priority) {
 		curr->priority = new_priority;
@@ -348,14 +356,8 @@ thread_get_priority (void) {
 void thread_update_priority(struct thread *t) {
 
 	// Calculate the priority
-	int recent_cpu = t->recent_cpu / 4;
 	int f = 1<<FLOAT;
-	if ((recent_cpu >>31) == 0) {
-		recent_cpu = (recent_cpu + f/2) / f; 
-	} else {
-		recent_cpu = (recent_cpu - f/2) / f;
-	}
-	int priority = PRI_MAX - recent_cpu - 2 *t->nice;
+	int priority = (PRI_MAX*f - t->recent_cpu/4 - 2 *t->nice*f)/f;
 
 	// Check whether priority is within the range
 	if (priority < 0) {
@@ -372,6 +374,8 @@ void
 thread_set_nice (int nice UNUSED) {
 	/* TODO: Your implementation goes here */
 	thread_current()->nice = nice;
+	thread_update_priority(thread_current());
+	thread_yield();
 	// TODO: Maybe thread yield??
 }
 
@@ -391,6 +395,7 @@ update_load_avg (void) {
 	if (!is_idle_thread(thread_current())) {
 		len++;
 	}
+	//printf("Length of the arrray is: %d\n", len);
 	load_avg = load_avg * 59 / 60  + len *f / 60;
 }
 
@@ -497,7 +502,6 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
-	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 	// Initialize the list and owned priority value
 	list_init(&t->owned_locks);
@@ -505,6 +509,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->nice = 0;
 	t->recent_cpu = 0;
 	t->timer = 0;
+	if (thread_mlfqs) {
+		thread_update_priority(t);
+	} else {
+		t->priority = priority;
+	}
 }
 
 bool is_idle_thread(struct thread *thread) {
@@ -719,9 +728,9 @@ void update_mlfqs(int ticks, struct list *waiting_list) {
 		update_load_avg();
 		
 		// Update current thread's recent cpu
-		if (!is_idle_thread(curr)) {
-			thread_update_recent_cpu(curr);
-		}
+		// if (!is_idle_thread(curr)) {
+		// 	thread_update_recent_cpu(curr);
+		// }
 
 		// // // Update waiting list's recent cpu
 		// update_recent_cpu_all(waiting_list);
@@ -729,19 +738,19 @@ void update_mlfqs(int ticks, struct list *waiting_list) {
 		// // Update ready list's recent cpu
 		// update_recent_cpu_all(&ready_list);
 	}
-	// if (ticks%4 == 0) {
+	if (ticks%4 == 0) {
 
-	// 	// Update current thread's recent cpu
-	// 	if (!is_idle_thread(curr)) {
-	// 		thread_update_priority(curr);
-	// 	}
+		// Update current thread's recent cpu
+		if (!is_idle_thread(curr)) {
+			thread_update_priority(curr);
+		}
 
-	// 	// Update waiting list's recent cpu
-	// 	update_priority_all(waiting_list);
+		// Update waiting list's recent cpu
+		update_priority_all(waiting_list);
 
-	// 	// Update ready list's recent cpu
-	// 	update_priority_all(&ready_list);
-	// }
+		// Update ready list's recent cpu
+		update_priority_all(&ready_list);
+	}
 }
 
 void update_recent_cpu_all(struct list *threads) {

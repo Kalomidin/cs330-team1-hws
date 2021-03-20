@@ -93,6 +93,7 @@ struct thread {
 	int priority;                       /* Priority. */
 	struct list owned_locks;			/* Owned locks by the thread */
 	int owned_priority;					/* Given Priority for the thread */
+	int64_t timer;	
 	int nice;
 	int recent_cpu;
 	/* Shared between thread.c and synch.c. */

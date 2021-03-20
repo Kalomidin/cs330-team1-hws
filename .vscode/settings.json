@@ -14,6 +14,7 @@
         "tuple": "c",
         "type_traits": "c",
         "utility": "c",
-        "list.h": "c"
+        "list.h": "c",
+        "timer.h": "c"
     }
 }
