@@ -93,7 +93,8 @@ struct thread {
 	int priority;                       /* Priority. */
 	struct list owned_locks;			/* Owned locks by the thread */
 	int owned_priority;					/* Given Priority for the thread */
-
+	int nice;
+	int recent_cpu;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -145,6 +146,12 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+void update_mlfqs(int ticks, struct list *waiting_list);
+void update_recent_cpu_all(struct list *threads);
+void update_priority_all(struct list *threads);
+void thread_update_priority(struct thread *t);
+void thread_update_recent_cpu(struct thread *t);
+void update_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
 

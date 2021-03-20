@@ -156,6 +156,7 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 			e = list_next(e);
 		}
 	}
+	update_mlfqs(ticks, &waiting_list);
 	thread_tick ();
 	intr_set_level(old_level);
 }

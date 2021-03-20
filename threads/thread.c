@@ -20,9 +20,15 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+#define DECIMAL 17
+
+#define FLOAT 14
+
 /* Random value for basic thread
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
+
+static int load_avg;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -47,6 +53,7 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
+#define MLFQS_TIME 100
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
 /* If false (default), use round-robin scheduler.
@@ -109,6 +116,7 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	load_avg = 0;
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -149,8 +157,7 @@ thread_tick (void) {
 	else
 		kernel_ticks++;
 
-	/* Enforce preemption. */
-	if (++thread_ticks >= TIME_SLICE)
+	if (++thread_ticks >= TIME_SLICE) 
 		intr_yield_on_return ();
 }
 
@@ -203,6 +210,7 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+	t->recent_cpu = 0;
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -336,31 +344,97 @@ thread_get_priority (void) {
 	return thread_current ()->priority;
 }
 
+
+void thread_update_priority(struct thread *t) {
+
+	// Calculate the priority
+	int recent_cpu = t->recent_cpu / 4;
+	int f = 1<<FLOAT;
+	if ((recent_cpu >>31) == 0) {
+		recent_cpu = (recent_cpu + f/2) / f; 
+	} else {
+		recent_cpu = (recent_cpu - f/2) / f;
+	}
+	int priority = PRI_MAX - recent_cpu - 2 *t->nice;
+
+	// Check whether priority is within the range
+	if (priority < 0) {
+		priority = 0;
+	} else if (priority > PRI_MAX) {
+		priority = PRI_MAX;
+	}
+
+	t->priority = priority;
+}
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) {
 	/* TODO: Your implementation goes here */
+	thread_current()->nice = nice;
+	// TODO: Maybe thread yield??
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current()->nice;
+}
+
+/* Returns 100 times the system load average. */
+void
+update_load_avg (void) {
+	/* TODO: Your implementation goes here */
+	int f = 1<<FLOAT;
+	int len = (int) list_size(&ready_list);
+	if (!is_idle_thread(thread_current())) {
+		len++;
+	}
+	load_avg = load_avg * 59 / 60  + len *f / 60;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	// We decided p  is a decimal and q is fractional
+	// p = 17 and q = 14
+
+	// Get the f
+	int load_avg_response = load_avg * 100;
+	int f = 1<<FLOAT;
+	if ((load_avg_response >>31) == 0) {
+		return (load_avg_response + f/2) / f; 
+	} else {
+		return (load_avg_response - f/2) / f ;
+	}
 }
 
+/* Update cpu for the given thread. */
+void
+thread_update_recent_cpu (struct thread *t) {
+	/* TODO: Your implementation goes here */
+	int f = 1<<FLOAT;
+	int recent_cpu = t->recent_cpu;
+	int load_avg_num = (2*load_avg);
+	int load_avg_denom = (2 *load_avg) + f;
+	int load_avg_final = ((int64_t) load_avg_num) * f / load_avg_denom; 
+	int new_recent_cpu = ((int64_t) load_avg_final) * recent_cpu / f;
+	t->recent_cpu = new_recent_cpu + t->nice * f;
+}
+ 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	int recent_cpu = thread_current()->recent_cpu * 100;
+	int f = 1<<FLOAT;
+	if ((recent_cpu >>31) == 0) {
+		return (recent_cpu + f/2) / f; 
+	} else {
+		return (recent_cpu - f/2) / f;
+	}
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -580,6 +654,10 @@ do_schedule(int status) {
 
 static void
 schedule (void) {
+	if (thread_ticks >= 4) {
+
+	}
+
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -612,6 +690,84 @@ schedule (void) {
 		/* Before switching the thread, we first save the information
 		 * of current running. */
 		thread_launch (next);
+	}
+}
+
+void update_mlfqs(int ticks, struct list *waiting_list) {
+	if (!thread_mlfqs) {
+		return;
+	}
+
+	struct thread *curr = thread_current();
+
+	/* 1. If the current thread is not IDLE thread then
+	  	   Increment recent cpu of the running thread */
+	if (!is_idle_thread(curr)) {
+		int f = 1<<FLOAT;
+		curr->recent_cpu = curr->recent_cpu + f;
+	}
+
+	/* 2. Every 100 tick, update recent cpu for:
+		- currently running thread
+		- blocked threads(the ones in the timer waiting list)
+		- ready list
+	*/
+	if (ticks%100 == 0) {
+		update_load_avg();
+		
+		// // Update current thread's recent cpu
+		// if (!is_idle_thread(curr)) {
+		// 	thread_update_recent_cpu(curr);
+		// }
+
+		// // Update waiting list's recent cpu
+		// update_recent_cpu_all(waiting_list);
+
+		// // Update ready list's recent cpu
+		// update_recent_cpu_all(&ready_list);
+	}
+	if (ticks%4 == 0) {
+
+		// Update current thread's recent cpu
+		if (!is_idle_thread(curr)) {
+			thread_update_priority(curr);
+		}
+
+		// Update waiting list's recent cpu
+		update_priority_all(waiting_list);
+
+		// Update ready list's recent cpu
+		update_priority_all(&ready_list);
+	}
+}
+
+void update_recent_cpu_all(struct list *threads) {
+	if (list_empty(threads)) {
+		return;
+	}
+	struct list_elem *e;
+	e = list_begin(threads);
+	while(e != list_end(threads)) {
+		// Convert e to new thread
+		struct thread *a;
+		a = list_entry(e, struct thread, elem);
+		thread_update_recent_cpu(a);
+		e = list_next(e);
+	}
+}
+
+void update_priority_all(struct list *threads) {
+	if (list_empty(threads)) {
+		return;
+	}
+	struct list_elem *e;
+	e = list_begin(threads);
+	while(e != list_end(threads)) {
+		// Convert e to new thread
+		struct thread *a;
+		a = list_entry(e, struct thread, elem);
+		thread_update_priority(a);
+		e = list_next(e);
 	}
 }
 
