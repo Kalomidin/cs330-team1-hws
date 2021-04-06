@@ -309,11 +309,17 @@ thread_exit (void) {
 #ifdef USERPROG
 	process_exit ();
 #endif
+		printf("inside thread exit after thread exit\n");
 
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+		printf("inside thread exit after thread exit 2\n");
+
 	do_schedule (THREAD_DYING);
+
+		printf("inside thread exit after thread exit 3\n");
+
 	NOT_REACHED ();
 }
 
@@ -685,7 +691,6 @@ schedule (void) {
 	/* Activate the new address space. */
 	process_activate (next);
 #endif
-
 	if (curr != next) {
 		/* If the thread we switched from is dying, destroy its struct
 		   thread. This must happen late so that thread_exit() doesn't

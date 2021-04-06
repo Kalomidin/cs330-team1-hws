@@ -183,9 +183,13 @@ process_exec (void *f_name) {
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
+printf("palloc working\n");
 
 	/* Start switched process. */
 	do_iret (&_if);
+printf("do_iret working\n");
+
+
 	NOT_REACHED ();
 }
 
@@ -204,6 +208,12 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+int i=0;
+// i<1000000000
+	while(i<1000000000){
+i++;
+	}
+
 	return -1;
 }
 
@@ -243,6 +253,7 @@ process_cleanup (void) {
 		curr->pml4 = NULL;
 		pml4_activate (NULL);
 		pml4_destroy (pml4);
+
 	}
 }
 
@@ -335,6 +346,16 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+
+/* TODO: Your code goes here.
+	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	 // #1 breaking the string
+   char *token, *save_ptr;
+	 for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
+		//  if_->R.
+   		printf ("'%s'\n", token);
+	 }
+
 	/* Open executable file. */
 	file = filesys_open (file_name);
 	if (file == NULL) {
@@ -414,8 +435,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	
 
 	success = true;
 
