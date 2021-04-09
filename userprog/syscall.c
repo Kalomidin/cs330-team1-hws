@@ -42,5 +42,42 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
 	printf ("system call!\n");
+	// char *c = "Hello from sys handler\n";
+	// putbuf(c, 24);
+	// check_user_ptr(f->rsp,0);
+	// printf("pointer addr special %d, %p\n", &f->rsp, f->rsp);
+	// int *p = f->rsp;
+	// int syscall_num = *p;
+	// p++;
+	// int fd = *p;
+	// p++;
+	// int bf = *p;
+	// void *buffer = (void *) bf;
+	// p++;
+	// int sz = *p;
+	// unsigned size = (unsigned) sz;
+	// // printf("sys_call %d, %d, %d\n", syscall_num, fd, bf);
+	// // printf("buffer %s\n", (char *) buffer);
+	// if (syscall_num == SYS_WRITE) {
+	// 	write(fd, buffer, size);
+	// }
 	thread_exit ();
 }
+
+_Bool create(const char *file, unsigned initial_size){return true;};
+_Bool remove(const char *file){return true;};
+int open(const char *file){return -1;};
+int filesize (int fd){return -1;};
+int read(int fd, void *buffer, unsigned size){return -1;};
+int write (int fd, void *buffer, unsigned size){
+	if (fd == 1) {
+	putbuf(buffer, size);
+	} else {
+		// TODO
+	}
+
+	return 1;
+};
+void seek(int fd, unsigned position){return;};
+unsigned tell(int fd){return 1;};
+void close(int fd){return;};

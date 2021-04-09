@@ -322,6 +322,7 @@ struct ELF64_PHDR {
 #define Phdr ELF64_PHDR
 
 static bool setup_stack (struct intr_frame *if_);
+static bool setup_stack_2 (void **esp, const char *file_name);
 static bool validate_segment (const struct Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
@@ -340,6 +341,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
+
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -347,14 +349,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 
-/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-	 // #1 breaking the string
-   char *token, *save_ptr;
-	 for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
-		//  if_->R.
-   		printf ("'%s'\n", token);
-	 }
 
 	/* Open executable file. */
 	file = filesys_open (file_name);
@@ -429,13 +423,66 @@ load (const char *file_name, struct intr_frame *if_) {
 	}
 
 	/* Set up stack. */
+	// if (!setup_stack (&if_->rsp, file_name))
+	// 	goto done;
 	if (!setup_stack (if_))
 		goto done;
+	hex_dump(if_->rsp, (const void *) file_name, strlen(file_name), true);
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
+	/* TODO: Your code goes here.
+	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	 // #1 breaking the string
 	
+
+   	char *token, *save_ptr;
+
+	struct list addrs;
+	list_init(&addrs);
+	
+	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
+		*token += '\0';
+		printf("token %s\n", token);
+		if_->rsp -= strlen(token);
+		printf("pointer addr %d, %d\n", if_->rsp, &if_->rsp);
+		struct pointer_elem p;
+		p.pointer_address = if_->rsp;
+		list_push_back(&addrs, &p.elem);
+		memcpy(if_->rsp, token, strlen(token));
+		// int s = strlen(token);
+		// int word_align = (4 - s%4)%4;
+		// if_->rsp -= word_align;
+		// memset(if_->rsp, 0, word_align);
+	 }
+	int word_align = (if_->rsp) % sizeof(char*);
+	if_->rsp -= word_align;
+	memset(if_->rsp, 0, word_align);
+
+	if_->rsp -= sizeof(char *);
+	memset(if_->rsp, 0, sizeof(char *));
+
+
+	// Refer addrs of data
+	struct list_elem *e;
+	e = list_begin(&addrs);
+	struct pointer_elem *addr_fn = list_entry(e, struct pointer_elem, elem);
+	int argc = list_size(&addrs);
+	while(e!=list_end(&addrs)){
+		struct pointer_elem *addr = list_entry(e, struct pointer_elem, elem);
+		if_->rsp -=  sizeof(char *);
+		printf("ppointer %p\n",addr->pointer_address);
+		memcpy(if_->rsp, addr->pointer_address, sizeof(char *));
+		e=list_next(e);
+	}
+	printf("ppointfqwfwefer %p\n",if_->rsp);
+	
+	if_->rsp -= sizeof(void (*) ());
+	memset(if_->rsp, 0, sizeof(void (*) () ));
+
+	if_->R.rsi = addr_fn->pointer_address;
+	if_->R.rdi = argc;
 
 	success = true;
 
@@ -569,6 +616,71 @@ setup_stack (struct intr_frame *if_) {
 			palloc_free_page (kpage);
 	}
 	return success;
+}
+
+static bool
+setup_stack_2 (void **esp, const char *file_name) 
+{
+  uint8_t *kpage;
+  bool success = false;
+
+  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  // printf("setup_stack: kpage:%p\n", kpage);
+  if (kpage != NULL) 
+    {
+      success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
+      // printf("setup_stack: success:%d\n", success);
+      if (success) {
+
+        // copy to FILE_NAME2
+        int file_name_len = strlen(file_name);
+        char *file_name2 = malloc (file_name_len + 1);
+        strlcpy (file_name2, file_name, file_name_len+1);
+        // tokenize
+        char *token, *save_ptr;
+        int total_len = 0;
+        int argc = 0;
+        for (token = strtok_r (file_name2, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
+          int token_len = strlen(token);
+          total_len += token_len + 1;
+          argc++;
+        }
+
+        strlcpy (file_name2, file_name, file_name_len+1);
+
+        char *next_str_ptr = (char *)(USER_STACK) - total_len;
+        char **adr_arr_ptr = (char **)(next_str_ptr) - argc - 1;
+        char **argv = adr_arr_ptr;
+        for (token = strtok_r (file_name2, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
+          // printf ("setup_stack:args '%s'\n", token);
+          int token_len = strlen(token);
+          strlcpy (next_str_ptr, token, token_len + 1);
+          *adr_arr_ptr = next_str_ptr;
+          adr_arr_ptr++;
+          next_str_ptr += token_len + 1;
+        }
+
+        free (file_name2);
+
+        void **stack_ptr = (void *)argv;
+
+        // push argv
+        stack_ptr -= 1;
+        *stack_ptr = argv;
+
+        // push argc
+        stack_ptr -= 1;
+        *(int *)stack_ptr = argc;
+
+        // push return address
+        stack_ptr -= 1;
+        *stack_ptr = (void *)0;
+        *esp = stack_ptr;
+      }
+      else
+        palloc_free_page (kpage);
+    }
+  return success;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
