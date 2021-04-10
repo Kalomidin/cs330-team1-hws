@@ -254,9 +254,10 @@ int filesize (int fd){
 	if (file == NULL) {
 		return 0;
 	}	
-	return file_get_inode(file);
+	return file_length(file);
 };
 int read(int fd, void *buffer, unsigned size){
+	is_safe_access(buffer);
 	int response;
 	if (fd == 0) {
 		response = input_getc();
@@ -270,6 +271,7 @@ int read(int fd, void *buffer, unsigned size){
 	return response;
 };
 int write (int fd, void *buffer, unsigned size){
+	is_safe_access(buffer);
 	if (fd == 1) {
 	putbuf(buffer, size);
 	} else {
