@@ -305,7 +305,6 @@ thread_tid (void) {
 void
 thread_exit (void) {
 	ASSERT (!intr_context ());
-	exit(0);
 
 #ifdef USERPROG
 	process_exit ();

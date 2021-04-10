@@ -22,6 +22,7 @@
         "vaddr.h": "c",
         "process.h": "c",
         "*.inc": "c",
-        "string.h": "c"
+        "string.h": "c",
+        "file.h": "c"
     }
 }

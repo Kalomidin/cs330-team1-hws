@@ -79,6 +79,9 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
+	
+	thread_current()->tf = *if_;
+
 	return thread_create (name,
 			PRI_DEFAULT, __do_fork, thread_current ());
 }
@@ -125,7 +128,13 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+
+	struct intr_frame *parent_if = &parent->tf;
+
+	// struct intr_frame *parent_if = malloc(sizeof(struct intr_frame));
+	// memcpy(parent_if, &parent->tf, sizeof(struct intr_frame));
+
+
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
