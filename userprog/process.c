@@ -27,6 +27,9 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+static struct list addrs;
+	
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -183,11 +186,9 @@ process_exec (void *f_name) {
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
-printf("palloc working\n");
 
 	/* Start switched process. */
 	do_iret (&_if);
-printf("do_iret working\n");
 
 
 	NOT_REACHED ();
@@ -348,10 +349,12 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
-
-
+	char *cpy_filename = malloc(strlen(file_name) + 1);
+	strlcpy(cpy_filename, file_name, strlen(file_name) + 1);
+	char *temp;
+	strtok_r(cpy_filename, " ", &temp);
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (cpy_filename);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -427,7 +430,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	// 	goto done;
 	if (!setup_stack (if_))
 		goto done;
-	hex_dump(if_->rsp, (const void *) file_name, strlen(file_name), true);
+	// hex_dump(if_->rsp, (const void *) file_name, strlen(file_name), true);
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
@@ -438,28 +441,23 @@ load (const char *file_name, struct intr_frame *if_) {
 	
 
    	char *token, *save_ptr;
-
-	struct list addrs;
 	list_init(&addrs);
 	
+	//Break into words
 	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
 		*token += '\0';
-		printf("token %s\n", token);
-		if_->rsp -= strlen(token);
-		printf("pointer addr %d, %d\n", if_->rsp, &if_->rsp);
-		struct pointer_elem p;
-		p.pointer_address = if_->rsp;
-		list_push_back(&addrs, &p.elem);
+		if_->rsp -= (strlen(token) + 1);
+		struct pointer_elem *p = malloc(sizeof(struct pointer_elem));
+		p->pointer_address = if_->rsp;
+		list_push_front(&addrs, &p->elem);
 		memcpy(if_->rsp, token, strlen(token));
-		// int s = strlen(token);
-		// int word_align = (4 - s%4)%4;
-		// if_->rsp -= word_align;
-		// memset(if_->rsp, 0, word_align);
+		char *buffer = if_->rsp;
 	 }
+ 
+	// Word alignment
 	int word_align = (if_->rsp) % sizeof(char*);
 	if_->rsp -= word_align;
 	memset(if_->rsp, 0, word_align);
-
 	if_->rsp -= sizeof(char *);
 	memset(if_->rsp, 0, sizeof(char *));
 
@@ -469,20 +467,22 @@ load (const char *file_name, struct intr_frame *if_) {
 	e = list_begin(&addrs);
 	struct pointer_elem *addr_fn = list_entry(e, struct pointer_elem, elem);
 	int argc = list_size(&addrs);
+
 	while(e!=list_end(&addrs)){
 		struct pointer_elem *addr = list_entry(e, struct pointer_elem, elem);
 		if_->rsp -=  sizeof(char *);
-		printf("ppointer %p\n",addr->pointer_address);
-		memcpy(if_->rsp, addr->pointer_address, sizeof(char *));
+		//printf("ppointer %p, %s\n",addr->pointer_address, (addr->pointer_address));
+		memcpy(if_->rsp, &addr->pointer_address, sizeof(char *));
 		e=list_next(e);
 	}
-	printf("ppointfqwfwefer %p\n",if_->rsp);
-	
+	int buffer;
+	buffer = if_->rsp;
+	// printf("Written value is: %x, %p, %s\n", buffer, &buffer, if_->rsp);
+
+	if_->R.rsi = if_->rsp;
+	if_->R.rdi = argc;
 	if_->rsp -= sizeof(void (*) ());
 	memset(if_->rsp, 0, sizeof(void (*) () ));
-
-	if_->R.rsi = addr_fn->pointer_address;
-	if_->R.rdi = argc;
 
 	success = true;
 
@@ -625,7 +625,7 @@ setup_stack_2 (void **esp, const char *file_name)
   bool success = false;
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  // printf("setup_stack: kpage:%p\n", kpage);
+  printf("setup_stack: kpage:%p\n", kpage);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);

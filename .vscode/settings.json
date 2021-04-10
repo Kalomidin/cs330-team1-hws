@@ -20,6 +20,8 @@
         "malloc.h": "c",
         "palloc.h": "c",
         "vaddr.h": "c",
-        "process.h": "c"
+        "process.h": "c",
+        "*.inc": "c",
+        "string.h": "c"
     }
 }

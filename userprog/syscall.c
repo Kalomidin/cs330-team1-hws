@@ -41,27 +41,31 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	// char *c = "Hello from sys handler\n";
-	// putbuf(c, 24);
-	// check_user_ptr(f->rsp,0);
-	// printf("pointer addr special %d, %p\n", &f->rsp, f->rsp);
-	// int *p = f->rsp;
-	// int syscall_num = *p;
-	// p++;
-	// int fd = *p;
-	// p++;
-	// int bf = *p;
-	// void *buffer = (void *) bf;
-	// p++;
-	// int sz = *p;
-	// unsigned size = (unsigned) sz;
-	// // printf("sys_call %d, %d, %d\n", syscall_num, fd, bf);
-	// // printf("buffer %s\n", (char *) buffer);
-	// if (syscall_num == SYS_WRITE) {
-	// 	write(fd, buffer, size);
+// 	printf ("system call!\n");
+// printf("syscal number %d\n", f->R.rax);
+	// switch (f->R.rax){
+	// 	case 1:
 	// }
-	thread_exit ();
+
+	// char *buffer;
+	// buffer = f->R.rdi;
+
+		char *buffer;
+		buffer = f->R.rsi;
+
+		// printf("pointer addr %d, %s\n", f->R.rsi, buffer[0]);
+
+		// printf("buffer %s\n", f->R.rsi);
+		// printf("buffer 2 %s\n", f->R.r10);
+
+	// printf("buffer length %d\n", strlen(buffer));
+
+	if (f->R.rax==SYS_WRITE){
+		write(1, buffer,strlen(buffer));
+	} else {
+		thread_exit ();
+	}
+
 }
 
 _Bool create(const char *file, unsigned initial_size){return true;};

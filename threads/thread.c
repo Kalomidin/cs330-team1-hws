@@ -305,20 +305,17 @@ thread_tid (void) {
 void
 thread_exit (void) {
 	ASSERT (!intr_context ());
+	exit(0);
 
 #ifdef USERPROG
 	process_exit ();
 #endif
-		printf("inside thread exit after thread exit\n");
 
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
-		printf("inside thread exit after thread exit 2\n");
 
 	do_schedule (THREAD_DYING);
-
-		printf("inside thread exit after thread exit 3\n");
 
 	NOT_REACHED ();
 }
