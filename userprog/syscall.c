@@ -6,25 +6,30 @@
 #include "threads/loader.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
+#include "threads/synch.h"
 #include "intrinsic.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "string.h"
+#include "threads/malloc.h"
+#include "devices/input.h"
+#include "userprog/process.h"
 
+void is_safe_access(void *ptr);
 static struct list fd_list;
-static fd_counter;
+static int fd_counter;
 
 struct fd_file {
 	int fd;
 	struct file *file;
+	char *file_name;
 	struct list_elem elem;
 };
 
-int add_new_file_to_fd_list(struct file *fl);
-struct file* get_file_from_fd(int fd);
+
 
 void is_safe_access(void *ptr) {
-	if (ptr == NULL || is_kernel_vaddr(ptr) || pml4_get_page(thread_current()->pml4, ptr) == NULL) {
+	if (ptr == NULL || is_kernel_vaddr(ptr) ) {
 		exit(-1);
 	}
 }
@@ -59,12 +64,15 @@ syscall_init (void) {
 	// Initialize the fd list
 	list_init(&fd_list);
 	fd_counter = 2;
+
+	lock_init(&fsl);
 }
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
 	int rax = f->R.rax;
+	// printf("Shehehe\n");
 	switch (rax)
 	{
 	/* Projects 2 and later. */
@@ -81,42 +89,43 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 	case SYS_FORK:                   /* Clone current process. */ 
 	{
-		char *thread_name = f->R.rdi;
+		const char *thread_name = (char *) f->R.rdi;
 		tid_t response = fork(thread_name, f);
 		f->R.rax = response;
 		break;
 	}
 	case SYS_EXEC:                   /* Switch current process. */
 	{
-		char *cmd_line = f->R.rdi;
-		exit(exec(cmd_line));
+		char *cmd_line = (char *) f->R.rdi;
+		f->R.rax = exec(cmd_line);
 		break;
 	}
 	case SYS_WAIT:                   /* Wait for a child process to die. */
 	{
-		int pid = f->R.rdi;
+		tid_t pid = (int) f->R.rdi;
+
 		int exit_status = wait(pid);
 		f->R.rax = exit_status;
 		break;
 	}
 	case SYS_CREATE:                 /* Create a file. */
 	{
-		char *file_name = f->R.rdi;
-		int initial_size =  f->R.rsi;
+		char *file_name = (char *) f->R.rdi;
+		int initial_size =  (int) f->R.rsi;
 		bool response = create(file_name, initial_size);	
 		f->R.rax = response;
 		break;
 	}
 	case SYS_REMOVE:                 /* Delete a file. */ 
 	{
-		char *file_name = f->R.rdi;
+		char *file_name = (char *)f->R.rdi;
 		int response = remove(file_name);		
 		f->R.rax = response;
 		break;
 	}
 	case SYS_OPEN:                   /* Open a file. */
 	{
-		char *file_name = f->R.rdi;
+		char *file_name = (char *) f->R.rdi;
 		int response = open(file_name);	
 		f->R.rax = response;
 		break;
@@ -131,15 +140,15 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_READ:                   /* Read from a file. */ 
 	{
 		int fd = f->R.rdi;
-		char *buf = f->R.rsi;
-		unsigned str_len = f->R.rdx;
+		char *buf = (char *) f->R.rsi;
+		unsigned str_len = (unsigned) f->R.rdx;
 		int response = read(fd, buf, str_len);
 		f->R.rax = response;
 		break;
 	}
 	case SYS_WRITE:                  /* Write to a file. */  
 	{
-		char *buf = f->R.rsi;
+		char *buf = (char *) f->R.rsi;
 		int fd = f->R.rdi;
 		unsigned str_len = f->R.rdx;
 		int response = write(fd, buf, str_len);
@@ -182,17 +191,12 @@ void halt(void) {
 }
 
 void exit (int status) {
-	char *temp;
-	struct thread *curr = thread_current();
-	char *name = curr -> name;
-	strtok_r(name, " ", &temp);
-	printf ("%s: exit(%d)\n", name, status);
-	curr->exit_status = status;
+	thread_current()->status = status;
 	thread_exit ();
 }
 
 tid_t fork (const char *thread_name, struct intr_frame *tf) {
-	is_safe_access(thread_name);
+	is_safe_access((void *)thread_name);
 
 	/* 1. Clone the current process and change name to thread_name */
 	// Registers to be cloned: %rbx, %rsp, %rbp and %r12-%r15
@@ -201,20 +205,24 @@ tid_t fork (const char *thread_name, struct intr_frame *tf) {
 
 int wait(tid_t pid) {
 	// Wait for the child process
-
+	return process_wait(pid);
 
 }
 
-int exec(char *cmd_line) {
-	is_safe_access(cmd_line);
-	return process_exec(cmd_line);
+int exec(char *cmd_line /*, struct intr_frame *_if*/) {
+	is_safe_access((void *) cmd_line);
+	char *cpy_cmd_line = malloc(strlen(cmd_line) + 1);
+	strlcpy(cpy_cmd_line, cmd_line, strlen(cmd_line) + 1);
+	return process_create_initd(cpy_cmd_line);
 }
 
 
 /* File functions*/
 
 bool create(const char *file_name, unsigned initial_size){
-	is_safe_access(file_name);
+	printf("Inside a create\n");
+	is_safe_access((void *) file_name);
+	printf("After access a create\n");
 	if (file_name == NULL || strlen(file_name) == 0) {
 		exit(-1);
 		return false;
@@ -222,29 +230,36 @@ bool create(const char *file_name, unsigned initial_size){
 	if (strlen(file_name) > 256) {
 		return false;
 	}
+	// lock_acquire(&fsl);
 	struct file *file = filesys_open(file_name);
+	// lock_release(&fsl);
 	if (file != NULL) {
 		file_close(file);
 		return false;
 	} 
-
+	// lock_acquire(&fsl);
 	bool is_created = filesys_create(file_name, initial_size);
+	// lock_release(&fsl);
 	return is_created;
 };
 
 bool remove(const char *file){
-	is_safe_access(file);
+	is_safe_access((void *) file);
+	lock_acquire(&fsl);
 	bool is_closed = filesys_remove(file);
+	lock_release(&fsl);
 	return is_closed;
-};
+}
 
-int open(const char *file_name){
-	is_safe_access(file_name);
+int open(char *file_name){
+	is_safe_access((void *)file_name);
+	lock_acquire(&fsl);
 	struct file *file = filesys_open(file_name);
+	lock_release(&fsl);
 	if (file == NULL) {
 		return -1;
 	} else {
-		int fd = add_new_file_to_fd_list(file);
+		int fd = add_new_file_to_fd_list(file, file_name);
 		return fd;
 	}
 };
@@ -255,7 +270,8 @@ int filesize (int fd){
 		return 0;
 	}	
 	return file_length(file);
-};
+}
+
 int read(int fd, void *buffer, unsigned size){
 	is_safe_access(buffer);
 	int response;
@@ -269,11 +285,13 @@ int read(int fd, void *buffer, unsigned size){
 		response = file_read(fl, buffer, size);
 	}
 	return response;
-};
+}
+
 int write (int fd, void *buffer, unsigned size){
 	is_safe_access(buffer);
 	if (fd == 1) {
 	putbuf(buffer, size);
+	return size;
 	} else {
 		struct file *file = get_file_from_fd(fd);
 		if (file == NULL) {
@@ -282,18 +300,20 @@ int write (int fd, void *buffer, unsigned size){
 		int read_size = file_write(file, buffer, size);
 		return read_size;
 	}
-};
+}
+
 void seek(int fd, unsigned position){
 	struct file *file = get_file_from_fd(fd);
 	if (file == NULL) {
 		return;
 	}
 	file_seek(file, position);
-};
-unsigned tell(int fd){
+}
+
+unsigned tell(int fd) {
 	struct file *file = get_file_from_fd(fd);
 	if (file == NULL) {
-		return;
+		return 0;
 	}
 	int response = file_tell(file);
 	if (response < 0 ) {
@@ -317,11 +337,12 @@ void close(int fd){
 
 
 // File Fd functions
-int add_new_file_to_fd_list(struct file *fl) {
+int add_new_file_to_fd_list(struct file *fl, char *file_name) {
 	// Create a fd struct
 	struct fd_file *new_fd_file = malloc(sizeof(struct fd_file));
 	new_fd_file->fd = fd_counter;
 	new_fd_file->file = fl;
+	new_fd_file->file_name = file_name;
 	fd_counter++;
 	list_push_back(&fd_list, &new_fd_file->elem);
 	return new_fd_file->fd;
@@ -338,4 +359,25 @@ struct file* get_file_from_fd(int fd) {
 		}
 	}
 	return NULL;
+}
+
+
+struct file* get_file_from_name(char *file_name) {
+	for(struct list_elem *e = list_begin(&fd_list); e != list_end(&fd_list); e = list_next(e)) {
+		struct fd_file *a = list_entry(e, struct fd_file, elem);
+		if (strcmp(a->file_name, file_name) == 0) {
+			return a->file;
+		}
+	}
+	return NULL;
+}
+
+void remove_file_from_fd_list(char *name) {
+	for(struct list_elem *e = list_begin(&fd_list); e != list_end(&fd_list); e = list_next(e)) {
+		struct fd_file *a = list_entry(e, struct fd_file, elem);
+		if (strcmp(a->file_name, name) == 0) {
+			list_remove(e);
+			return;
+		}
+	}
 }

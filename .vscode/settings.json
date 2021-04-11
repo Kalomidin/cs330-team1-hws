@@ -23,6 +23,10 @@
         "process.h": "c",
         "*.inc": "c",
         "string.h": "c",
-        "file.h": "c"
+        "file.h": "c",
+        "syscall.h": "c",
+        "tss.h": "c",
+        "mmu.h": "c",
+        "flags.h": "c"
     }
 }

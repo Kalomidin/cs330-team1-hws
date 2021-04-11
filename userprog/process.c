@@ -7,6 +7,7 @@
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -18,9 +19,17 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "threads/synch.h"
+#include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
+
+static struct safe_file {
+	char *file_name;
+	struct semaphore lk;
+	bool success;
+};
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -34,6 +43,7 @@ static struct list addrs;
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+	// TODO: What I need to do dear TA?
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -52,11 +62,18 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+	// struct safe_file safe_file;
+	// safe_file.file_name = fn_copy;
+	// sema_init(&safe_file.lk, 0);
+	// safe_file.success = false; 
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+
+	// sema_down(&safe_file.lk);
+
 	if (tid == TID_ERROR)
-		palloc_free_page (fn_copy);
+		palloc_free_page (fn_copy); 
 	return tid;
 }
 
@@ -173,23 +190,25 @@ error:
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
-process_exec (void *f_name) {
-	char *file_name = f_name;
-	bool success;
+process_exec (void *fl_name) {
+	// struct safe_file *sf_file = (struct safe_file *) safe_file;
+	char *file_name = fl_name;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
 	struct intr_frame _if;
+	// memset(&_if, 0, sizeof _if);
+
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
-
 	/* We first kill the current context */
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	bool success = load (file_name, &_if);
+	// sema_up(&sf_file->lk);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -214,14 +233,16 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-int i=0;
-// i<1000000000
+	
+	int i=0;
+	
+	// i<1000000000
 	while(i<1000000000){
-i++;
+		i++;
 	}
 
 	return -1;
@@ -235,6 +256,11 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	char *temp;
+	char *name = curr -> name;
+	strtok_r(name, " ", &temp);
+	printf ("%s: exit(%d)\n", name, curr->status);
+
 
 	process_cleanup ();
 }
@@ -332,7 +358,6 @@ struct ELF64_PHDR {
 #define Phdr ELF64_PHDR
 
 static bool setup_stack (struct intr_frame *if_);
-static bool setup_stack_2 (void **esp, const char *file_name);
 static bool validate_segment (const struct Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
@@ -359,15 +384,26 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	char *cpy_filename = malloc(strlen(file_name) + 1);
+
 	strlcpy(cpy_filename, file_name, strlen(file_name) + 1);
 	char *temp;
 	strtok_r(cpy_filename, " ", &temp);
+
 	/* Open executable file. */
+	// lock_acquire(&fsl);
 	file = filesys_open (cpy_filename);
+	// lock_release(&fsl);
+
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
+	// lock_acquire(&fsl);
+	// // file_deny_write(file);
+	// // printf("Deny write counter: %d\n", file->inode.deny_write_cnt);
+	// // add_new_file_to_fd_list(file, cpy_filename);
+	// lock_release(&fsl);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -627,70 +663,6 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 
-static bool
-setup_stack_2 (void **esp, const char *file_name) 
-{
-  uint8_t *kpage;
-  bool success = false;
-
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  printf("setup_stack: kpage:%p\n", kpage);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
-      // printf("setup_stack: success:%d\n", success);
-      if (success) {
-
-        // copy to FILE_NAME2
-        int file_name_len = strlen(file_name);
-        char *file_name2 = malloc (file_name_len + 1);
-        strlcpy (file_name2, file_name, file_name_len+1);
-        // tokenize
-        char *token, *save_ptr;
-        int total_len = 0;
-        int argc = 0;
-        for (token = strtok_r (file_name2, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
-          int token_len = strlen(token);
-          total_len += token_len + 1;
-          argc++;
-        }
-
-        strlcpy (file_name2, file_name, file_name_len+1);
-
-        char *next_str_ptr = (char *)(USER_STACK) - total_len;
-        char **adr_arr_ptr = (char **)(next_str_ptr) - argc - 1;
-        char **argv = adr_arr_ptr;
-        for (token = strtok_r (file_name2, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
-          // printf ("setup_stack:args '%s'\n", token);
-          int token_len = strlen(token);
-          strlcpy (next_str_ptr, token, token_len + 1);
-          *adr_arr_ptr = next_str_ptr;
-          adr_arr_ptr++;
-          next_str_ptr += token_len + 1;
-        }
-
-        free (file_name2);
-
-        void **stack_ptr = (void *)argv;
-
-        // push argv
-        stack_ptr -= 1;
-        *stack_ptr = argv;
-
-        // push argc
-        stack_ptr -= 1;
-        *(int *)stack_ptr = argc;
-
-        // push return address
-        stack_ptr -= 1;
-        *stack_ptr = (void *)0;
-        *esp = stack_ptr;
-      }
-      else
-        palloc_free_page (kpage);
-    }
-  return success;
-}
 
 /* Adds a mapping from user virtual address UPAGE to kernel
  * virtual address KPAGE to the page table.
