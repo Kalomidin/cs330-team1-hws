@@ -15,6 +15,7 @@
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
@@ -23,11 +24,22 @@
 #endif
 
 static void process_cleanup (void);
-static bool load (const char *file_name, struct intr_frame *if_);
+bool load (const char *file_name, struct intr_frame *if_);
+// static bool load (const char *file_name, struct intr_frame *if_);
+
 static void initd (void *f_name);
 static void __do_fork (void *);
 
 static struct list addrs;
+
+static struct safe_file {
+	struct semaphore lk;
+	char *file_name;
+	bool status;
+	int tid;
+	struct semaphore child_lk;
+	struct list_elem elem;
+};
 	
 
 /* General process initializer for initd and other process. */
@@ -49,15 +61,32 @@ process_create_initd (const char *file_name) {
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
+	struct safe_file *safe_file = palloc_get_page(0);
+
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
-	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
-	if (tid == TID_ERROR)
+	safe_file->file_name = fn_copy;
+	
+	sema_init(&safe_file->lk, 0);
+	safe_file->status = false;
+
+	/* Create a new thread to execute FILE_NAME. */	
+	tid = thread_create (file_name, PRI_DEFAULT, initd, safe_file);
+
+	sema_down(&safe_file->lk);
+
+	struct thread *t = thread_current();
+	if (tid == TID_ERROR) {
 		palloc_free_page (fn_copy);
-	return tid;
+		return tid;
+	} else {
+		safe_file->tid = tid;
+		sema_init(&safe_file->child_lk, 0);
+		list_push_back(&t->children, &safe_file->elem);
+		return tid;
+	}
 }
 
 /* A thread function that launches first user process. */
@@ -174,13 +203,16 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	char *file_name = f_name;
+	struct safe_file *safe_file = f_name;
+	char *file_name = safe_file->file_name;
+
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
 	struct intr_frame _if;
+
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
@@ -188,8 +220,11 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
-	/* And then load the binary */
+	/* And then load t  he binary */
 	success = load (file_name, &_if);
+
+	safe_file->status = success;
+	sema_up(&safe_file->lk);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -218,11 +253,14 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-int i=0;
-// i<1000000000
-	while(i<1000000000){
-i++;
-	}
+	struct thread *curr = thread_current();
+
+	printf("It is in wait\n");
+	for(struct list_elem *e = list_begin(&curr->children); e != list_end(&curr->children); e = list_next(e) ) {
+		struct safe_file *child_info = list_entry(e, struct safe_file, elem);
+		sema_down(&child_info->lk);
+	};
+	printf("It is in wait\n");
 
 	return -1;
 }
@@ -230,12 +268,20 @@ i++;
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
+	printf("Hello world");
 	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
+	printf("Hello world222");
 
+	// /* TODO: Your code goes here.
+	//  * TODO: Implement process termination message (see
+	//  * TODO: project2/process_termination.html).
+	//  * TODO: We recommend you to implement process resource cleanup here. */
+
+	char *temp;
+	char *name = curr -> name;
+	strtok_r(name, " ", &temp);
+	printf ("%s: exit(%d)\n", name, curr->exit_status);
+	
 	process_cleanup ();
 }
 
@@ -342,7 +388,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
  * Stores the executable's entry point into *RIP
  * and its initial stack pointer into *RSP.
  * Returns true if successful, false otherwise. */
-static bool
+bool
 load (const char *file_name, struct intr_frame *if_) {
 	struct thread *t = thread_current ();
 	struct ELF ehdr;

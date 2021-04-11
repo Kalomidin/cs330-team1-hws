@@ -104,9 +104,10 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
-	struct thread *parent_thread;
+	// struct tid_t *parent_thread;
 	struct list children;
 	int exit_status;
+	struct lock *parent_lock;			/* The lock that is holding the thread from proceeding(the one it is waiting to unlock)*/
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

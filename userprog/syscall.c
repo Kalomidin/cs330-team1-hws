@@ -1,4 +1,5 @@
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -10,9 +11,13 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "string.h"
+#include "stdlib.h"
+#include "devices/timer.h"
+#include "threads/synch.h"
 
 static struct list fd_list;
 static fd_counter;
+
 
 struct fd_file {
 	int fd;
@@ -59,6 +64,7 @@ syscall_init (void) {
 	// Initialize the fd list
 	list_init(&fd_list);
 	fd_counter = 2;
+	lock_init(&fsl);
 }
 
 /* The main system call interface */
@@ -89,7 +95,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_EXEC:                   /* Switch current process. */
 	{
 		char *cmd_line = f->R.rdi;
-		exit(exec(cmd_line));
+		f->R.rax = exec(cmd_line);
+		// printf("Response is: %d\n", f->R.rax);
 		break;
 	}
 	case SYS_WAIT:                   /* Wait for a child process to die. */
@@ -182,12 +189,7 @@ void halt(void) {
 }
 
 void exit (int status) {
-	char *temp;
-	struct thread *curr = thread_current();
-	char *name = curr -> name;
-	strtok_r(name, " ", &temp);
-	printf ("%s: exit(%d)\n", name, status);
-	curr->exit_status = status;
+	thread_current()->status = status;
 	thread_exit ();
 }
 
@@ -201,13 +203,26 @@ tid_t fork (const char *thread_name, struct intr_frame *tf) {
 
 int wait(tid_t pid) {
 	// Wait for the child process
-
+	return process_wait(pid);
 
 }
 
 int exec(char *cmd_line) {
 	is_safe_access(cmd_line);
-	return process_exec(cmd_line);
+	char *cmd = malloc(strlen(cmd_line) + 1);
+	strlcpy(cmd, cmd_line, strlen(cmd_line) + 1);
+	struct intr_frame _if;
+
+	_if.ds = _if.es = _if.ss = SEL_UDSEG;
+	_if.cs = SEL_UCSEG;
+	_if.eflags = FLAG_IF | FLAG_MBS;
+
+	int response = load(cmd, &_if);
+
+	// /* Start switched process. */
+	// do_iret (&_if);
+
+	return response;
 }
 
 
@@ -222,39 +237,53 @@ bool create(const char *file_name, unsigned initial_size){
 	if (strlen(file_name) > 256) {
 		return false;
 	}
+	lock_acquire(&fsl);
 	struct file *file = filesys_open(file_name);
+	lock_release(&fsl);
+
 	if (file != NULL) {
 		file_close(file);
 		return false;
 	} 
-
+	lock_acquire(&fsl);
 	bool is_created = filesys_create(file_name, initial_size);
+	lock_release(&fsl);
 	return is_created;
 };
 
 bool remove(const char *file){
 	is_safe_access(file);
+	lock_acquire(&fsl);
 	bool is_closed = filesys_remove(file);
+	lock_release(&fsl);
 	return is_closed;
 };
 
 int open(const char *file_name){
 	is_safe_access(file_name);
+	lock_acquire(&fsl);
 	struct file *file = filesys_open(file_name);
 	if (file == NULL) {
+		lock_release(&fsl);
 		return -1;
 	} else {
 		int fd = add_new_file_to_fd_list(file);
+		lock_release(&fsl);
 		return fd;
 	}
 };
 
 int filesize (int fd){ 
+	lock_acquire(&fsl);
 	struct file *file = get_file_from_fd(fd);
 	if (file == NULL) {
+		lock_release(&fsl);
 		return 0;
 	}	
-	return file_length(file);
+	int response = file_length(file);
+	lock_release(&fsl);
+
+	return response;
 };
 int read(int fd, void *buffer, unsigned size){
 	is_safe_access(buffer);
@@ -262,11 +291,14 @@ int read(int fd, void *buffer, unsigned size){
 	if (fd == 0) {
 		response = input_getc();
 	} else {
+		lock_acquire(&fsl);
 		struct file *fl = get_file_from_fd(fd);
 		if (fl == NULL) {
+			lock_release(&fsl);
 			return -1;
 		}
 		response = file_read(fl, buffer, size);
+		lock_release(&fsl);
 	}
 	return response;
 };
@@ -275,27 +307,36 @@ int write (int fd, void *buffer, unsigned size){
 	if (fd == 1) {
 	putbuf(buffer, size);
 	} else {
+		lock_acquire(&fsl);
 		struct file *file = get_file_from_fd(fd);
 		if (file == NULL) {
+			lock_release(&fsl);
 			return 0;
 		}
 		int read_size = file_write(file, buffer, size);
+		lock_release(&fsl);
 		return read_size;
 	}
 };
 void seek(int fd, unsigned position){
+	lock_acquire(&fsl);
 	struct file *file = get_file_from_fd(fd);
 	if (file == NULL) {
+		lock_release(&fsl);
 		return;
 	}
 	file_seek(file, position);
+	lock_release(&fsl);
 };
 unsigned tell(int fd){
+	lock_acquire(&fsl);
 	struct file *file = get_file_from_fd(fd);
 	if (file == NULL) {
-		return;
+		lock_release(&fsl);
+		return 0;
 	}
 	int response = file_tell(file);
+	lock_release(&fsl);
 	if (response < 0 ) {
 		response = 0;
 	}
@@ -303,16 +344,19 @@ unsigned tell(int fd){
 };
 
 void close(int fd){
+	lock_acquire(&fsl);
 	for(struct list_elem *e = list_begin(&fd_list); e != list_end(&fd_list); e = list_next(e)) {
 		struct fd_file *a = list_entry(e, struct fd_file, elem);
 		if (a->fd == fd) {
 			file_close(a->file);
 			list_remove(e);
+			break;
 		}
 		if (a->fd > fd) {
 			break;
 		}
 	}
+	lock_release(&fsl);
 };
 
 
