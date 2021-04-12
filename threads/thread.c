@@ -313,7 +313,9 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+
 	do_schedule (THREAD_DYING);
+
 	NOT_REACHED ();
 }
 
@@ -685,7 +687,6 @@ schedule (void) {
 	/* Activate the new address space. */
 	process_activate (next);
 #endif
-
 	if (curr != next) {
 		/* If the thread we switched from is dying, destroy its struct
 		   thread. This must happen late so that thread_exit() doesn't
