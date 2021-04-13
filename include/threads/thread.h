@@ -105,7 +105,6 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
-	// struct bool has_parent;
 	struct list children;
 	int *exit_status;
 	struct semaphore *sema;

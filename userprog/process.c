@@ -29,13 +29,6 @@ static void __do_fork (void *);
 
 static struct list addrs;
 	
-struct child_info {
-	struct semaphore sema;
-	tid_t pid;
-	char *file_name;
-	int exit_status;
-	struct list_elem elem;
-};
 
 /* General process initializer for initd and other process. */
 static void
@@ -64,7 +57,8 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	child_info->file_name = fn_copy;
-	sema_init(&child_info->sema, 0);
+	child_info->sema = palloc_get_page(0);
+	sema_init(child_info->sema, 0);
 	child_info->exit_status = 0;
 
 	/* Create a new thread to execute FILE_NAME. */
@@ -199,7 +193,7 @@ process_exec (void *f_name) {
 	
 	struct thread *curr = thread_current();
 
-	curr->sema = &child_info->sema;
+	curr->sema = child_info->sema;
 	curr->exit_status = &child_info->exit_status;
 
 	bool success;
@@ -257,7 +251,7 @@ process_wait (tid_t child_tid) {
 	for(struct list_elem *e = list_begin(&curr->children); e != list_end(&curr->children); e = list_next(e)) {
 		struct child_info *child_info = list_entry(e, struct child_info, elem);
 		if (child_info->pid == child_tid) {
-			sema_down(&child_info->sema);
+			sema_down(child_info->sema);
 			list_remove(e);
 			return child_tid;
 		}

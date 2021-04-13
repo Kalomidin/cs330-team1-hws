@@ -1,4 +1,5 @@
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -189,10 +190,12 @@ void halt(void) {
 void exit (int status) {
 	char *temp;
 	struct thread *curr = thread_current();
-	char *name = curr -> name;
-	strtok_r(name, " ", &temp);
-	printf ("%s: exit(%d)\n", name, status);
 	curr->exit_status = status;
+
+	char *name = curr->name;
+	strtok_r(name, " ", &temp);
+	printf ("%s: exit(%d)\n", name, curr->exit_status);
+	
 	thread_exit ();
 }
 
@@ -214,7 +217,13 @@ int exec(const char *cmd_line) {
 	is_safe_access(cmd_line);
 	char *cmd_copy = malloc(strlen(cmd_line) + 1);
 	strlcpy(cmd_copy, cmd_line, strlen(cmd_line) + 1);
-	return process_exec(cmd_copy);
+	
+	struct child_info *cf = malloc(sizeof(struct child_info));
+	cf->file_name = cmd_copy;
+	cf->sema = thread_current()->sema;
+	cf->exit_status = 0;
+	tid_t pid =  process_exec(cf);
+	return pid;
 }
 
 
