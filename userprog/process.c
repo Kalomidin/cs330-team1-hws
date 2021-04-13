@@ -29,6 +29,13 @@ static void __do_fork (void *);
 
 static struct list addrs;
 	
+struct child_info {
+	struct semaphore sema;
+	tid_t pid;
+	char *file_name;
+	int exit_status;
+	struct list_elem elem;
+};
 
 /* General process initializer for initd and other process. */
 static void
@@ -49,15 +56,28 @@ process_create_initd (const char *file_name) {
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
+	
+	struct child_info *child_info = palloc_get_page(0);
+
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	child_info->file_name = fn_copy;
+	sema_init(&child_info->sema, 0);
+	child_info->exit_status = 0;
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
-	if (tid == TID_ERROR)
+	tid = thread_create (file_name, PRI_DEFAULT, initd, child_info);
+	if (tid == TID_ERROR) {
 		palloc_free_page (fn_copy);
-	return tid;
+		return tid;
+	} else {
+		child_info->pid = tid;
+		struct thread *t = thread_current();
+		list_push_back(&t->children, &child_info->elem);
+		return tid;
+	}
 }
 
 /* A thread function that launches first user process. */
@@ -174,7 +194,14 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	char *file_name = f_name;
+	struct child_info *child_info = f_name;
+	char *file_name = child_info->file_name;
+	
+	struct thread *curr = thread_current();
+
+	curr->sema = &child_info->sema;
+	curr->exit_status = &child_info->exit_status;
+
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
@@ -192,7 +219,13 @@ process_exec (void *f_name) {
 	success = load (file_name, &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
+
+	// Remove filename if it is in kernel 
+	if (is_user_vaddr(file_name)) {
+		palloc_free_page (file_name);
+	}
+	// palloc_free_page (file_name);
+
 	if (!success)
 		return -1;
 
@@ -214,14 +247,20 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-int i=0;
-// i<1000000000
-	while(i<1000000000){
-i++;
+
+	struct thread *curr = thread_current();
+
+	for(struct list_elem *e = list_begin(&curr->children); e != list_end(&curr->children); e = list_next(e)) {
+		struct child_info *child_info = list_entry(e, struct child_info, elem);
+		if (child_info->pid == child_tid) {
+			sema_down(&child_info->sema);
+			list_remove(e);
+			return child_tid;
+		}
 	}
 
 	return -1;
@@ -235,7 +274,10 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
+	
+	if (curr->sema != NULL) {
+		sema_up(curr->sema);
+	}
 	process_cleanup ();
 }
 

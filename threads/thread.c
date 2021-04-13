@@ -507,6 +507,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	// Initialize the list and owned priority value
 	list_init(&t->owned_locks);
+
+#ifdef USERPROG
+	list_init(&t->children);
+#endif
+
 	t->owned_priority = priority;
 	t->nice = 0;
 	t->recent_cpu = 0;

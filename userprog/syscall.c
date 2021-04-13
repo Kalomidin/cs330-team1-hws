@@ -10,6 +10,9 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "string.h"
+#include "threads/mmu.h"
+#include "threads/vaddr.h"
+
 
 static struct list fd_list;
 static fd_counter;
@@ -89,7 +92,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_EXEC:                   /* Switch current process. */
 	{
 		char *cmd_line = f->R.rdi;
-		exit(exec(cmd_line));
+		f->R.rax = exec(cmd_line);
 		break;
 	}
 	case SYS_WAIT:                   /* Wait for a child process to die. */
@@ -165,12 +168,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		close(fd);
 		break;
 	}
+	// case SYS_MMAP:                   /* Map a file into memory. */
+	// {
+	// 	printf("Exception page fault\n");
+	// 	break;
+	// }
 	
 	/* Extra for Project 2 */ 
 	case SYS_DUP2:                   /* Duplicate the file descriptor */
-
-	case SYS_MOUNT:
-	case SYS_UMOUNT:
 	default:
 		break;
 	}
@@ -201,13 +206,15 @@ tid_t fork (const char *thread_name, struct intr_frame *tf) {
 
 int wait(tid_t pid) {
 	// Wait for the child process
-
+	process_wait(pid);
 
 }
 
-int exec(char *cmd_line) {
+int exec(const char *cmd_line) {
 	is_safe_access(cmd_line);
-	return process_exec(cmd_line);
+	char *cmd_copy = malloc(strlen(cmd_line) + 1);
+	strlcpy(cmd_copy, cmd_line, strlen(cmd_line) + 1);
+	return process_exec(cmd_copy);
 }
 
 
