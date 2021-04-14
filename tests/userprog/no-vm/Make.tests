@@ -1,4 +1,3 @@
-# -*- makefile -*-
 
 tests/userprog/no-vm_TESTS = tests/userprog/no-vm/multi-oom
 tests/userprog/no-vm_PROGS = $(tests/userprog/no-vm_TESTS)

@@ -12,20 +12,18 @@
 #include "filesys/filesys.h"
 #include "string.h"
 #include "threads/mmu.h"
+#include "threads/synch.h"
 #include "threads/vaddr.h"
 
 
-static struct list fd_list;
 static fd_counter;
 
-struct fd_file {
-	int fd;
-	struct file *file;
-	struct list_elem elem;
-};
+static struct lock fd_counter_lock;
+
 
 int add_new_file_to_fd_list(struct file *fl);
 struct file* get_file_from_fd(int fd);
+int dup2(int oldfd, int newfd);
 
 void is_safe_access(void *ptr) {
 	if (ptr == NULL || is_kernel_vaddr(ptr) || pml4_get_page(thread_current()->pml4, ptr) == NULL) {
@@ -61,13 +59,15 @@ syscall_init (void) {
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 
 	// Initialize the fd list
-	list_init(&fd_list);
+	lock_init(&prcs_lock);
+	sema_init(&fork_sema, 0);
+	lock_init(&fd_counter_lock);
 	fd_counter = 2;
 }
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
 	int rax = f->R.rax;
 	switch (rax)
 	{
@@ -169,18 +169,23 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		close(fd);
 		break;
 	}
-	// case SYS_MMAP:                   /* Map a file into memory. */
-	// {
-	// 	printf("Exception page fault\n");
-	// 	break;
-	// }
+
 	
 	/* Extra for Project 2 */ 
 	case SYS_DUP2:                   /* Duplicate the file descriptor */
+	{
+
+		// f-R.rax =  dup2(int oldfd, int newfd);
+		break;
+	}
 	default:
 		break;
 	}
 
+}
+
+int dup2(int oldfd, int newfd) {
+	return -1;
 }
 
 void halt(void) {
@@ -190,38 +195,43 @@ void halt(void) {
 void exit (int status) {
 	char *temp;
 	struct thread *curr = thread_current();
-	curr->exit_status = status;
+	*curr->exit_status = status;
 
 	char *name = curr->name;
 	strtok_r(name, " ", &temp);
-	printf ("%s: exit(%d)\n", name, curr->exit_status);
+	printf ("%s: exit(%d)\n", name, *curr->exit_status);
 	
 	thread_exit ();
 }
 
 tid_t fork (const char *thread_name, struct intr_frame *tf) {
-	is_safe_access(thread_name);
 
+	is_safe_access(thread_name);
+	memcpy(&thread_current()->sc_tf, tf, sizeof(struct intr_frame));
+
+	char *t_name = malloc(sizeof(thread_current()->name));
+	strlcpy(t_name, thread_name, sizeof(thread_current()->name));
+	
 	/* 1. Clone the current process and change name to thread_name */
 	// Registers to be cloned: %rbx, %rsp, %rbp and %r12-%r15
-	return process_fork(thread_name, tf);
+	tid_t pid = process_fork(t_name, tf);
+
+	return pid;
 }
 
 int wait(tid_t pid) {
 	// Wait for the child process
-	process_wait(pid);
-
+	return process_wait(pid);
 }
 
 int exec(const char *cmd_line) {
 	is_safe_access(cmd_line);
 	char *cmd_copy = malloc(strlen(cmd_line) + 1);
 	strlcpy(cmd_copy, cmd_line, strlen(cmd_line) + 1);
-	
 	struct child_info *cf = malloc(sizeof(struct child_info));
 	cf->file_name = cmd_copy;
 	cf->sema = thread_current()->sema;
-	cf->exit_status = 0;
+	cf->exit_status = thread_current()->exit_status;
 	tid_t pid =  process_exec(cf);
 	return pid;
 }
@@ -238,80 +248,138 @@ bool create(const char *file_name, unsigned initial_size){
 	if (strlen(file_name) > 256) {
 		return false;
 	}
+	lock_acquire(&prcs_lock);
 	struct file *file = filesys_open(file_name);
 	if (file != NULL) {
 		file_close(file);
+		lock_release(&prcs_lock);
 		return false;
 	} 
 
 	bool is_created = filesys_create(file_name, initial_size);
+	lock_release(&prcs_lock);
+
 	return is_created;
 };
 
 bool remove(const char *file){
 	is_safe_access(file);
+	lock_acquire(&prcs_lock);
 	bool is_closed = filesys_remove(file);
+	lock_release(&prcs_lock);
 	return is_closed;
 };
 
 int open(const char *file_name){
 	is_safe_access(file_name);
+	lock_acquire(&prcs_lock);
 	struct file *file = filesys_open(file_name);
 	if (file == NULL) {
+		lock_release(&prcs_lock);
 		return -1;
 	} else {
 		int fd = add_new_file_to_fd_list(file);
+		struct file_information *file_info = malloc(sizeof(struct file_information));
+		file_info->file = file;
+		file_info->fd = fd;
+		lock_release(&prcs_lock);
 		return fd;
 	}
 };
 
 int filesize (int fd){ 
+	lock_acquire(&prcs_lock);
 	struct file *file = get_file_from_fd(fd);
 	if (file == NULL) {
+		lock_release(&prcs_lock);
 		return 0;
 	}	
-	return file_length(file);
+	int length =  file_length(file);
+	lock_release(&prcs_lock);
+	return length;
 };
 int read(int fd, void *buffer, unsigned size){
 	is_safe_access(buffer);
-	int response;
+	int response = 0;
 	if (fd == 0) {
+		lock_acquire(&prcs_lock);
 		response = input_getc();
+		lock_release(&prcs_lock);
 	} else {
+		lock_acquire(&prcs_lock);
 		struct file *fl = get_file_from_fd(fd);
 		if (fl == NULL) {
+			lock_release(&prcs_lock);
 			return -1;
 		}
-		response = file_read(fl, buffer, size);
+		if (read_size(fl) < size) {
+			return - 1;
+		}
+		int signed_int = size & ((1 << 31) - 1);
+		if (signed_int < 0) {
+			lock_release(&prcs_lock);
+			return -1;
+		} else {
+			response = file_read(fl, buffer, size);
+		}
+		lock_release(&prcs_lock);
+		return response;
 	}
 	return response;
 };
 int write (int fd, void *buffer, unsigned size){
+	
 	is_safe_access(buffer);
+	int response = 0;
 	if (fd == 1) {
-	putbuf(buffer, size);
+		lock_acquire(&prcs_lock);
+		putbuf(buffer, size);
+		lock_release(&prcs_lock);
+		return size;
 	} else {
 		struct file *file = get_file_from_fd(fd);
 		if (file == NULL) {
 			return 0;
 		}
-		int read_size = file_write(file, buffer, size);
-		return read_size;
+		int offset = size;
+		lock_acquire(&prcs_lock);
+		int signed_int = size & ((1 << 31) - 1);
+		int sign_bit = size & (1 << 31);
+		if (sign_bit != 0) {
+			// TODO:
+		} else {
+			response = file_write(file, buffer, size);
+		}
+		lock_release(&prcs_lock);
+		return response;
 	}
 };
 void seek(int fd, unsigned position){
-	struct file *file = get_file_from_fd(fd);
-	if (file == NULL) {
+	struct file *fl = get_file_from_fd(fd);
+	if (fl == NULL) {
 		return;
 	}
-	file_seek(file, position);
+	int pos = position;
+	if (pos < 0) {
+		return;
+	} else {
+		if (read_size(fl) < pos) {
+			return;
+		}
+		lock_acquire(&prcs_lock);
+		file_seek(fl, position);
+		lock_release(&prcs_lock);
+	}
 };
 unsigned tell(int fd){
+	lock_acquire(&prcs_lock);
 	struct file *file = get_file_from_fd(fd);
 	if (file == NULL) {
-		return;
+		lock_release(&prcs_lock);
+		return 0;
 	}
 	int response = file_tell(file);
+	lock_release(&prcs_lock);
 	if (response < 0 ) {
 		response = 0;
 	}
@@ -319,8 +387,10 @@ unsigned tell(int fd){
 };
 
 void close(int fd){
-	for(struct list_elem *e = list_begin(&fd_list); e != list_end(&fd_list); e = list_next(e)) {
-		struct fd_file *a = list_entry(e, struct fd_file, elem);
+	lock_acquire(&prcs_lock);
+	struct thread *curr = thread_current();
+	for(struct list_elem *e = list_begin(&curr->files); e != list_end(&curr->files); e = list_next(e)) {
+		struct file_information *a = list_entry(e, struct file_information, elem);
 		if (a->fd == fd) {
 			file_close(a->file);
 			list_remove(e);
@@ -329,28 +399,28 @@ void close(int fd){
 			break;
 		}
 	}
+	lock_release(&prcs_lock);
 };
 
 
 // File Fd functions
 int add_new_file_to_fd_list(struct file *fl) {
 	// Create a fd struct
-	struct fd_file *new_fd_file = malloc(sizeof(struct fd_file));
+	struct file_information *new_fd_file = malloc(sizeof(struct file_information));
 	new_fd_file->fd = fd_counter;
-	new_fd_file->file = fl;
 	fd_counter++;
-	list_push_back(&fd_list, &new_fd_file->elem);
+	new_fd_file->file = fl;
+	list_push_back(&thread_current()->files, &new_fd_file->elem);
 	return new_fd_file->fd;
 }
 
 struct file* get_file_from_fd(int fd) {
-	for(struct list_elem *e = list_begin(&fd_list); e != list_end(&fd_list); e = list_next(e)) {
-		struct fd_file *a = list_entry(e, struct fd_file, elem);
+	struct thread *curr = thread_current();
+
+	for(struct list_elem *e = list_begin(&curr->files); e != list_end(&curr->files); e = list_next(e)) {
+		struct file_information *a = list_entry(e, struct file_information, elem);
 		if (a->fd == fd) {
 			return a->file;
-		}
-		if (a->fd > fd) {
-			return NULL;
 		}
 	}
 	return NULL;

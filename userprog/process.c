@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -27,6 +28,7 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+
 static struct list addrs;
 	
 
@@ -45,7 +47,7 @@ tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
 	tid_t tid;
-
+	
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
@@ -59,7 +61,11 @@ process_create_initd (const char *file_name) {
 	child_info->file_name = fn_copy;
 	child_info->sema = palloc_get_page(0);
 	sema_init(child_info->sema, 0);
-	child_info->exit_status = 0;
+	if(thread_current()->exit_status == NULL) {
+		child_info->exit_status = palloc_get_page(0);
+	} else {
+		child_info->exit_status = thread_current()->exit_status;
+	}
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, child_info);
@@ -93,11 +99,27 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
-	
-	thread_current()->tf = *if_;
+	memcpy(&thread_current()->tf, if_, sizeof(struct intr_frame));
 
-	return thread_create (name,
+
+	tid_t pid = thread_create (name,
 			PRI_DEFAULT, __do_fork, thread_current ());
+	int  i = 0;
+
+	// Add child to the list
+	struct child_info *cf = palloc_get_page(0);
+
+	// cf->file_name = t_name;
+	cf->sema = palloc_get_page(0);
+	sema_init(cf->sema, 0);
+	cf->exit_status = palloc_get_page(0);
+	cf->pid = pid;
+
+	list_push_back(&thread_current()->children, &cf->elem);
+	sema_up(&fork_sema);
+
+	sema_down(cf->sema);
+	return pid;
 }
 
 #ifndef VM
@@ -112,21 +134,31 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	if (is_kern_pte(pte)) {
+		return true;
+	}
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	newpage = palloc_get_page(PAL_USER);
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	 
+	memcpy(newpage, parent_page, PGSIZE);
+	// printf("Parent %p, child %p \n", newpage, parent_page);
+
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
 	return true;
 }
@@ -138,6 +170,9 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
+	sema_down(&fork_sema);
+	
+
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
@@ -146,13 +181,25 @@ __do_fork (void *aux) {
 	struct intr_frame *parent_if = &parent->tf;
 
 	// struct intr_frame *parent_if = malloc(sizeof(struct intr_frame));
-	// memcpy(parent_if, &parent->tf, sizeof(struct intr_frame));
+	memcpy(parent_if, &parent->tf, sizeof(struct intr_frame));
 
 
 	bool succ = true;
+	// printf("Current name: %s, %p, %p, (rdi): %p, (rip): %p, (parent rip): %p, (tid): %d\n", current->name, if_.rsp, if_.R.rbp, if_.R.rdi, if_.rip, parent->tf.rip, current->tid);
 
-	/* 1. Read the cpu context to local stack. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	// /* 1. Read the cpu context to local stack. */
+	memcpy (&if_, &parent->sc_tf, sizeof (struct intr_frame));
+
+
+	for(struct list_elem *e = list_begin(&parent->children); e != list_end(&parent->children); e = list_next(e)) {
+		struct child_info *child_info = list_entry(e, struct child_info, elem);
+		if (current->tid == child_info->pid) {
+			current->sema = child_info->sema;
+			current->exit_status = child_info->exit_status;
+			break;
+		}
+	}
+
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -160,11 +207,13 @@ __do_fork (void *aux) {
 		goto error;
 
 	process_activate (current);
+
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
 #else
+
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
 		goto error;
 #endif
@@ -175,11 +224,27 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
-	process_init ();
+	for(struct list_elem *e = list_begin(&parent->files); e != list_end(&parent->files); e = list_next(e)) {
+		struct file_information *file_info = list_entry(e, struct file_information, elem);
+		struct  file_information *cpy_file_info = palloc_get_page(0);
+		cpy_file_info->fd = file_info->fd;
+		cpy_file_info->file = file_duplicate(file_info->file); 
+		list_push_back(&current->files, &cpy_file_info->elem);
+	}
 
+	process_init ();
+	
 	/* Finally, switch to the newly created process. */
-	if (succ)
-		do_iret (&if_);
+	
+	// // Registers to be cloned: %rbx, %rsp, %rbp and %r12-%r15
+	// if_.R.rdi = 0;
+	// if_.R.rsi = 0;
+	// if_.R.rcx = 0;
+	if_.R.rax = 0;
+
+	sema_up(current->sema);
+	do_iret (&if_);
+	return;
 error:
 	thread_exit ();
 }
@@ -194,7 +259,7 @@ process_exec (void *f_name) {
 	struct thread *curr = thread_current();
 
 	curr->sema = child_info->sema;
-	curr->exit_status = &child_info->exit_status;
+	curr->exit_status = child_info->exit_status;
 
 	bool success;
 
@@ -253,7 +318,7 @@ process_wait (tid_t child_tid) {
 		if (child_info->pid == child_tid) {
 			sema_down(child_info->sema);
 			list_remove(e);
-			return child_tid;
+			return *child_info->exit_status;
 		}
 	}
 
@@ -270,6 +335,15 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 	
 	if (curr->sema != NULL) {
+		if (curr->file != NULL) {
+			file_close(curr->file);
+		}
+		// Remove and close all the files
+		for(struct list_elem *e = list_begin(&curr->files); e != list_end(&curr->files); e = list_next(e)) {
+			struct file_information *file_info = list_entry(e, struct file_information, elem);
+			close(file_info);
+		}
+
 		sema_up(curr->sema);
 	}
 	process_cleanup ();
@@ -399,11 +473,21 @@ load (const char *file_name, struct intr_frame *if_) {
 	char *temp;
 	strtok_r(cpy_filename, " ", &temp);
 	/* Open executable file. */
+	lock_acquire(&prcs_lock);
 	file = filesys_open (cpy_filename);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
+	// // Add the file to the opened files list
+	// struct file_information *file_info = malloc(sizeof(struct file_information));
+	// file_info->file = file;
+	// file_info->fd = add_new_file_to_fd_list(file);
+	file_deny_write(file);
+	thread_current()->file = file;
+
+	// list_push_back(&thread_current()->files, &file_info->elem);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -532,8 +616,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	success = true;
 
 done:
+	lock_release(&prcs_lock);
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
 	return success;
 }
 

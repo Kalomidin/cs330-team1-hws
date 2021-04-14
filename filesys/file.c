@@ -143,6 +143,10 @@ file_length (struct file *file) {
 	return inode_length (file->inode);
 }
 
+off_t read_size(struct file *file) {
+	return file_length(file) - file->pos;
+}
+
 /* Sets the current position in FILE to NEW_POS bytes from the
  * start of the file. */
 void

@@ -108,6 +108,9 @@ struct thread {
 	struct list children;
 	int *exit_status;
 	struct semaphore *sema;
+	struct intr_frame sc_tf;
+	struct list files;
+	struct file *file;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -116,6 +119,7 @@ struct thread {
 
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
+
 	unsigned magic;                     /* Detects stack overflow. */
 };
 

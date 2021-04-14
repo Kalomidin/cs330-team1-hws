@@ -219,7 +219,18 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-	thread_yield();
+
+	enum intr_level old_level;
+
+	ASSERT (is_thread (t));
+
+	old_level = intr_disable ();
+	if(t->priority > thread_current()->priority) {
+		thread_yield();
+	}
+	intr_set_level (old_level);
+
+
 	return tid;
 }
 
@@ -510,6 +521,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 #ifdef USERPROG
 	list_init(&t->children);
+	list_init(&t->files);
 #endif
 
 	t->owned_priority = priority;
