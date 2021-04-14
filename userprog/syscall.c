@@ -18,6 +18,11 @@
 
 static fd_counter;
 
+static struct fd_list {
+	int fd;
+	struct list_elem elem;
+}
+
 static struct lock fd_counter_lock;
 
 
@@ -174,8 +179,9 @@ syscall_handler (struct intr_frame *f) {
 	/* Extra for Project 2 */ 
 	case SYS_DUP2:                   /* Duplicate the file descriptor */
 	{
-
-		// f-R.rax =  dup2(int oldfd, int newfd);
+		int oldfd = f->R.rdi; 
+		int newfd = f->R.rsi;
+		f-R.rax =  dup2(oldfd, newfd);
 		break;
 	}
 	default:
@@ -209,7 +215,7 @@ tid_t fork (const char *thread_name, struct intr_frame *tf) {
 	is_safe_access(thread_name);
 	memcpy(&thread_current()->sc_tf, tf, sizeof(struct intr_frame));
 
-	char *t_name = malloc(sizeof(thread_current()->name));
+	char *t_name = palloc_get_page(0);
 	strlcpy(t_name, thread_name, sizeof(thread_current()->name));
 	
 	/* 1. Clone the current process and change name to thread_name */
@@ -406,8 +412,9 @@ void close(int fd){
 // File Fd functions
 int add_new_file_to_fd_list(struct file *fl) {
 	// Create a fd struct
-	struct file_information *new_fd_file = malloc(sizeof(struct file_information));
-	new_fd_file->fd = fd_counter;
+	struct file_information *new_fd_file = palloc_get_page(0);
+	new_fd_file->fd = palloc_get_page(0);
+	list_init(new_fd_file->fd);
 	fd_counter++;
 	new_fd_file->file = fl;
 	list_push_back(&thread_current()->files, &new_fd_file->elem);

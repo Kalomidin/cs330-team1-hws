@@ -11,7 +11,7 @@ struct pointer_elem{
 };
 
 struct file_information {
-	int fd;
+	struct list fds;
 	struct file *file;
 	struct list_elem elem;
 };
