@@ -111,6 +111,7 @@ struct thread {
 	struct intr_frame sc_tf;
 	struct list files;
 	struct file *file;
+	int generation;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

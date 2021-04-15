@@ -210,6 +210,10 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+	t->generation = 0;
+	if (!is_idle_thread(thread_current())) {
+		t->generation = thread_current()->generation + 1;
+	}
 	
 	if (!is_idle_thread(thread_current())) {
 			t->recent_cpu = thread_current()->recent_cpu;

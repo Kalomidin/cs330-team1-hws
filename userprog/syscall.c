@@ -14,9 +14,12 @@
 #include "threads/mmu.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 
+#define MAX_GENERATION 10
 
 static fd_counter;
+
 
 static struct lock fd_counter_lock;
 
@@ -169,24 +172,23 @@ syscall_handler (struct intr_frame *f) {
 		close(fd);
 		break;
 	}
-
-	
 	/* Extra for Project 2 */ 
-	case SYS_DUP2:                   /* Duplicate the file descriptor */
-	{
-
-		// f-R.rax =  dup2(int oldfd, int newfd);
-		break;
-	}
+	// case SYS_DUP2:                   /* Duplicate the file descriptor */
+	// {
+	// 	// int oldfd = f->R.rdi; 
+	// 	// int newfd = f->R.rsi;
+	// 	// f->R.rax =  dup2(oldfd, newfd);
+	// 	break;
+	// }
 	default:
-		break;
+		thread_exit();
 	}
 
 }
 
-int dup2(int oldfd, int newfd) {
-	return -1;
-}
+// int dup2(int oldfd, int newfd) {
+// 	return -1;
+// }
 
 void halt(void) {
 	power_off();
@@ -208,6 +210,12 @@ tid_t fork (const char *thread_name, struct intr_frame *tf) {
 
 	is_safe_access(thread_name);
 	memcpy(&thread_current()->sc_tf, tf, sizeof(struct intr_frame));
+
+	uint64_t *page = palloc_get_page(PAL_USER); 
+	if ( !is_kern_pte(page) && thread_current()->generation > MAX_GENERATION) {
+		return -1;
+	}
+	palloc_free_page(page);
 
 	char *t_name = malloc(sizeof(thread_current()->name));
 	strlcpy(t_name, thread_name, sizeof(thread_current()->name));
@@ -279,9 +287,6 @@ int open(const char *file_name){
 		return -1;
 	} else {
 		int fd = add_new_file_to_fd_list(file);
-		struct file_information *file_info = malloc(sizeof(struct file_information));
-		file_info->file = file;
-		file_info->fd = fd;
 		lock_release(&prcs_lock);
 		return fd;
 	}

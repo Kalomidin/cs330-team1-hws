@@ -101,7 +101,6 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
 	memcpy(&thread_current()->tf, if_, sizeof(struct intr_frame));
 
-
 	tid_t pid = thread_create (name,
 			PRI_DEFAULT, __do_fork, thread_current ());
 	int  i = 0;
@@ -110,9 +109,9 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	struct child_info *cf = palloc_get_page(0);
 
 	// cf->file_name = t_name;
-	cf->sema = palloc_get_page(0);
+	cf->sema = malloc(sizeof(struct semaphore));
 	sema_init(cf->sema, 0);
-	cf->exit_status = palloc_get_page(0);
+	cf->exit_status = malloc(sizeof(int));
 	cf->pid = pid;
 
 	list_push_back(&thread_current()->children, &cf->elem);
@@ -226,7 +225,7 @@ __do_fork (void *aux) {
 
 	for(struct list_elem *e = list_begin(&parent->files); e != list_end(&parent->files); e = list_next(e)) {
 		struct file_information *file_info = list_entry(e, struct file_information, elem);
-		struct  file_information *cpy_file_info = palloc_get_page(0);
+		struct  file_information *cpy_file_info = malloc(sizeof(struct file_information));
 		cpy_file_info->fd = file_info->fd;
 		cpy_file_info->file = file_duplicate(file_info->file); 
 		list_push_back(&current->files, &cpy_file_info->elem);
@@ -246,7 +245,8 @@ __do_fork (void *aux) {
 	do_iret (&if_);
 	return;
 error:
-	thread_exit ();
+	sema_up(current->sema);
+	exit (-1);
 }
 
 /* Switch the current execution context to the f_name.
@@ -283,7 +283,6 @@ process_exec (void *f_name) {
 	if (is_user_vaddr(file_name)) {
 		palloc_free_page (file_name);
 	}
-	// palloc_free_page (file_name);
 
 	if (!success)
 		return -1;
@@ -339,9 +338,11 @@ process_exit (void) {
 			file_close(curr->file);
 		}
 		// Remove and close all the files
-		for(struct list_elem *e = list_begin(&curr->files); e != list_end(&curr->files); e = list_next(e)) {
+		for(struct list_elem *e = list_begin(&curr->files); e != list_end(&curr->files);) {
 			struct file_information *file_info = list_entry(e, struct file_information, elem);
 			close(file_info);
+			list_remove(e);
+			e = list_next(e);
 		}
 
 		sema_up(curr->sema);
@@ -442,7 +443,6 @@ struct ELF64_PHDR {
 #define Phdr ELF64_PHDR
 
 static bool setup_stack (struct intr_frame *if_);
-static bool setup_stack_2 (void **esp, const char *file_name);
 static bool validate_segment (const struct Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
@@ -480,14 +480,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
-	// // Add the file to the opened files list
-	// struct file_information *file_info = malloc(sizeof(struct file_information));
-	// file_info->file = file;
-	// file_info->fd = add_new_file_to_fd_list(file);
 	file_deny_write(file);
 	thread_current()->file = file;
-
-	// list_push_back(&thread_current()->files, &file_info->elem);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -555,11 +549,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	}
 
 	/* Set up stack. */
-	// if (!setup_stack (&if_->rsp, file_name))
-	// 	goto done;
+
 	if (!setup_stack (if_))
 		goto done;
-	// hex_dump(if_->rsp, (const void *) file_name, strlen(file_name), true);
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
@@ -612,7 +604,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	if_->R.rdi = argc;
 	if_->rsp -= sizeof(void (*) ());
 	memset(if_->rsp, 0, sizeof(void (*) () ));
-
+	
 	success = true;
 
 done:
@@ -745,71 +737,6 @@ setup_stack (struct intr_frame *if_) {
 			palloc_free_page (kpage);
 	}
 	return success;
-}
-
-static bool
-setup_stack_2 (void **esp, const char *file_name) 
-{
-  uint8_t *kpage;
-  bool success = false;
-
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  printf("setup_stack: kpage:%p\n", kpage);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
-      // printf("setup_stack: success:%d\n", success);
-      if (success) {
-
-        // copy to FILE_NAME2
-        int file_name_len = strlen(file_name);
-        char *file_name2 = malloc (file_name_len + 1);
-        strlcpy (file_name2, file_name, file_name_len+1);
-        // tokenize
-        char *token, *save_ptr;
-        int total_len = 0;
-        int argc = 0;
-        for (token = strtok_r (file_name2, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
-          int token_len = strlen(token);
-          total_len += token_len + 1;
-          argc++;
-        }
-
-        strlcpy (file_name2, file_name, file_name_len+1);
-
-        char *next_str_ptr = (char *)(USER_STACK) - total_len;
-        char **adr_arr_ptr = (char **)(next_str_ptr) - argc - 1;
-        char **argv = adr_arr_ptr;
-        for (token = strtok_r (file_name2, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)) {
-          // printf ("setup_stack:args '%s'\n", token);
-          int token_len = strlen(token);
-          strlcpy (next_str_ptr, token, token_len + 1);
-          *adr_arr_ptr = next_str_ptr;
-          adr_arr_ptr++;
-          next_str_ptr += token_len + 1;
-        }
-
-        free (file_name2);
-
-        void **stack_ptr = (void *)argv;
-
-        // push argv
-        stack_ptr -= 1;
-        *stack_ptr = argv;
-
-        // push argc
-        stack_ptr -= 1;
-        *(int *)stack_ptr = argc;
-
-        // push return address
-        stack_ptr -= 1;
-        *stack_ptr = (void *)0;
-        *esp = stack_ptr;
-      }
-      else
-        palloc_free_page (kpage);
-    }
-  return success;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
