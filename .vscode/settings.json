@@ -23,6 +23,7 @@
         "process.h": "c",
         "*.inc": "c",
         "string.h": "c",
-        "file.h": "c"
+        "file.h": "c",
+        "syscall.h": "c"
     }
 }

@@ -13,7 +13,7 @@ int open(const char *file);
 int filesize (int fd);
 int read(int fd, void *buffer, unsigned size);
 int write (int fd, void *buffer, unsigned size);
-void seek(int fd, unsigned position);
+void seek(int fd, size_t position);
 unsigned tell(int fd);
 void close(int fd);
 

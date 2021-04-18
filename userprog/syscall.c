@@ -155,7 +155,7 @@ syscall_handler (struct intr_frame *f) {
 	}
 	case SYS_SEEK:                   /* Change position in a file. */  {
 		int fd = f->R.rdi;
-		char position = f->R.rsi;
+		size_t position = f->R.rsi;
 		seek(fd, position);	
 		break;
 	}
@@ -359,22 +359,14 @@ int write (int fd, void *buffer, unsigned size){
 		return response;
 	}
 };
-void seek(int fd, unsigned position){
+void seek(int fd, size_t position){
 	struct file *fl = get_file_from_fd(fd);
 	if (fl == NULL) {
 		return;
 	}
-	int pos = position;
-	if (pos < 0) {
-		return;
-	} else {
-		if (read_size(fl) < pos) {
-			return;
-		}
-		lock_acquire(&prcs_lock);
-		file_seek(fl, position);
-		lock_release(&prcs_lock);
-	}
+	lock_acquire(&prcs_lock);
+	file_seek(fl, position);
+	lock_release(&prcs_lock);
 };
 unsigned tell(int fd){
 	lock_acquire(&prcs_lock);
