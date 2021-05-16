@@ -4,6 +4,7 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -50,33 +51,39 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: Create the page, fetch the initialier according to the VM type,
+		/* TODO: Create the page, fetch the initializer according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
-
+		printf("Hello again1\n");
 		/* TODO: Insert the page into the spt. */
 	}
 err:
+	printf("Hello again2\n");
 	return false;
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function. */
+	struct page *temp_entry = malloc(sizeof(struct page));
+	temp_entry->va = va;
 
+	struct hash_elem *e = hash_find(spt->pages,&temp_entry->elem);
+	if (e==NULL){
+		return NULL;
+	}
+	struct page *page = hash_entry(e, struct page, elem);
+	/* TODO: Fill this function. */
 	return page;
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
-	int succ = false;
-	/* TODO: Fill this function. */
+spt_insert_page (struct supplemental_page_table *spt,
+		struct page *page) {
 
-	return succ;
+	/* TODO: Fill this function. */
+	return hash_insert(spt->pages, &page->elem) != NULL;
 }
 
 void
@@ -112,6 +119,7 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
+	frame = palloc_get_page(PAL_USER);
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -136,7 +144,8 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	struct page *page = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-
+	// allocate in the stack
+	printf("Hello world VM\n");
 	return vm_do_claim_page (page);
 }
 
@@ -171,9 +180,25 @@ vm_do_claim_page (struct page *page) {
 	return swap_in (page, frame->kva);
 }
 
+// Hash Functions required for [frame_map]. Uses 'kaddr' as key.
+static unsigned
+spte_hash_func(const struct hash_elem *eleme, void *aux UNUSED)
+{
+  struct page *entry = hash_entry(eleme, struct page, elem);
+  return hash_int( (int)entry->va );
+}
+static bool
+spte_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
+{
+  struct page *a_entry = hash_entry(a, struct page, elem);
+  struct page *b_entry = hash_entry(b, struct page, elem);
+  return a_entry->va < b_entry->va;
+}
 /* Initialize new supplemental page table */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_init (struct supplemental_page_table *spt) {
+	spt = malloc(sizeof (struct supplemental_page_table));
+	hash_init(spt->pages,spte_hash_func, spte_less_func, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
