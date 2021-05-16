@@ -1,0 +1,38 @@
+Kernel command line: -q -f put sm-random run sm-random
+0 ~ 9fc00 1
+100000 ~ 13e0000 1
+Pintos booting with: 
+	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
+	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
+Calibrating timer...  209,305,600 loops/s.
+hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
+hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
+hd1:0: detected 110 sector (55 kB) disk, model "QEMU HARDDISK", serial "QM00003"
+Formatting file system...done.
+Boot complete.
+Putting 'sm-random' into the file system...
+Executing 'sm-random':
+(sm-random) begin
+(sm-random) create "bazzle"
+(sm-random) open "bazzle"
+(sm-random) write "bazzle" in random order
+(sm-random) read "bazzle" in random order
+(sm-random) 13 bytes read starting at offset 780 in "bazzle" differ from expected.
+(sm-random) Data actually read:
+0000000000000300                                      f9 1a aa 4b |            ...K|
+0000000000000310  a3 39 45 04 b8 1d fa 6d-32                      |.9E....m2       |
+(sm-random) Expected data:
+0000000000000300                                      77 bc 92 22 |            w.."|
+0000000000000310  f5 d2 4b 0c 83 b1 1b fb-b7                      |..K......       |
+(sm-random) 13 bytes read starting at offset 780 in "bazzle" differ from expected: FAILED
+sm-random: exit(1)
+Execution of 'sm-random' complete.
+Timer: 92 ticks
+Thread: 40 idle ticks, 34 kernel ticks, 18 user ticks
+hd0:0: 0 reads, 0 writes
+hd0:1: 248 reads, 387 writes
+hd1:0: 110 reads, 0 writes
+Console: 1537 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...

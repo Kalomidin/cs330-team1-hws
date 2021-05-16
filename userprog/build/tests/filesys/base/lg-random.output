@@ -1,0 +1,43 @@
+Kernel command line: -q -f put lg-random run lg-random
+0 ~ 9fc00 1
+100000 ~ 13e0000 1
+Pintos booting with: 
+	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
+	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
+Calibrating timer...  157,081,600 loops/s.
+hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
+hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
+hd1:0: detected 110 sector (55 kB) disk, model "QEMU HARDDISK", serial "QM00003"
+Formatting file system...done.
+Boot complete.
+Putting 'lg-random' into the file system...
+Executing 'lg-random':
+(lg-random) begin
+(lg-random) create "bazzle"
+(lg-random) open "bazzle"
+(lg-random) write "bazzle" in random order
+(lg-random) read "bazzle" in random order
+(lg-random) 353 bytes read starting at offset 19968 in "bazzle" differ from expected.
+(lg-random) Showing first differing 64 bytes.
+(lg-random) Data actually read:
+0000000000004e00  b9 9e c0 3b 6c 90 6f 30-86 70 54 18 26 eb 92 c2 |...;l.o0.pT.&...|
+0000000000004e10  f1 eb 8c 0f 71 2f 48 52-f3 9f 56 22 8f 98 f3 c8 |....q/HR..V"....|
+0000000000004e20  2c 8b a0 fa b2 3c 60 5d-80 c5 7d 89 3a af e3 52 |,....<`]..}.:..R|
+0000000000004e30  39 b2 eb 4f 9b 39 7b 6a-94 6f 1d 09 4d 7c ab a9 |9..O.9{j.o..M|..|
+(lg-random) Expected data:
+0000000000004e00  63 be df b5 a3 83 97 73-0b 80 55 84 c7 da d1 75 |c......s..U....u|
+0000000000004e10  31 90 0f 8f e5 f7 4e f7-73 e4 8d dc 0d a3 fc 7d |1.....N.s......}|
+0000000000004e20  e2 43 e8 7a 0a 34 c7 01-93 d8 05 4e 66 fa 91 77 |.C.z.4.....Nf..w|
+0000000000004e30  ed d7 20 68 ca ca ab 92-9b 67 b6 77 8d b4 c0 07 |.. h.....g.w....|
+(lg-random) 353 bytes read starting at offset 19968 in "bazzle" differ from expected: FAILED
+lg-random: exit(1)
+Execution of 'lg-random' complete.
+Timer: 88 ticks
+Thread: 41 idle ticks, 30 kernel ticks, 18 user ticks
+hd0:0: 0 reads, 0 writes
+hd0:1: 125 reads, 560 writes
+hd1:0: 110 reads, 0 writes
+Console: 1929 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...

@@ -1,0 +1,39 @@
+FAIL
+Test output failed to match any acceptable form.
+
+Acceptable output:
+  (dup2-complex) open "sample.txt"
+  (dup2-complex) open "sample.txt"
+  (dup2-complex) first dup2()
+  Pintos is funny
+  child: exit(110)
+  (dup2-complex) Parent success
+  dup2-complex: exit(0)
+Differences in `diff -u' format:
++ Doing 1-----
+  (dup2-complex) open "sample.txt"
+  (dup2-complex) open "sample.txt"
+  (dup2-complex) first dup2()
++ Doing 1-----
++ Doing 2-----
++ Doing 3-----: fd1: 2
++ Doing 4-----val: 0
++ Doing 4-----
++ Doing 5-----: fd1: 2
++ Doing 5.4 -----
++ Doing 5.5 -----
++ Doing 6 -----
++ Doing 6 -----
++ Buffer and byte_cnt: "KAIST is the first and top science and techn, 45 
++ Response from stdout
++ Response from stdout: 10
+  Pintos is funny
+- child: exit(110)
+- (dup2-complex) Parent success
+- dup2-complex: exit(0)
++ (dup2-complex) child begin
++ (dup2-complex) 3
++ (dup2-complex) 45
++ (dup2-complex) child end
++ child: exit(65)
++ dup2-complex: exit(1)

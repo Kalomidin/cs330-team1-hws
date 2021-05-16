@@ -1,0 +1,49 @@
+Kernel command line: -q -f put dup2-complex put sample.txt run dup2-complex
+0 ~ 9fc00 1
+100000 ~ 13e0000 1
+Pintos booting with: 
+	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
+	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
+Calibrating timer...  157,081,600 loops/s.
+hd0:0: detected 329 sector (164 kB) disk, model "QEMU HARDDISK", serial "QM00001"
+hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
+hd1:0: detected 127 sector (63 kB) disk, model "QEMU HARDDISK", serial "QM00003"
+Formatting file system...done.
+Boot complete.
+Putting 'dup2-complex' into the file system...
+Putting 'sample.txt' into the file system...
+Executing 'dup2-complex':
+Doing 1-----
+(dup2-complex) open "sample.txt"
+(dup2-complex) open "sample.txt"
+(dup2-complex) first dup2()
+Doing 1-----
+Doing 2-----
+Doing 3-----: fd1: 2
+Doing 4-----val: 0
+Doing 4-----
+Doing 5-----: fd1: 2
+Doing 5.4 -----
+Doing 5.5 -----
+Doing 6 -----
+Doing 6 -----
+Buffer and byte_cnt: "KAIST is the first and top science and techn, 45 
+Response from stdout
+Response from stdout: 10
+Pintos is funny
+(dup2-complex) child begin
+(dup2-complex) 3
+(dup2-complex) 45
+(dup2-complex) child end
+child: exit(65)
+dup2-complex: exit(1)
+Execution of 'dup2-complex' complete.
+Timer: 75 ticks
+Thread: 37 idle ticks, 30 kernel ticks, 8 user ticks
+hd0:0: 0 reads, 0 writes
+hd0:1: 230 reads, 321 writes
+hd1:0: 127 reads, 0 writes
+Console: 1389 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...
