@@ -231,7 +231,6 @@ spte_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux U
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
-
 	hash_init(spt->pages,spte_hash_func, spte_less_func, NULL);
 }
 
