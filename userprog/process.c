@@ -19,6 +19,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -35,7 +36,6 @@ static struct list addrs;
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
-	struct thread *current = thread_current ();
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -103,7 +103,6 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 
 	tid_t pid = thread_create (name,
 			PRI_DEFAULT, __do_fork, thread_current ());
-	int  i = 0;
 
 	// Add child to the list
 	struct child_info *cf = palloc_get_page(0);
@@ -183,7 +182,6 @@ __do_fork (void *aux) {
 	memcpy(parent_if, &parent->tf, sizeof(struct intr_frame));
 
 
-	bool succ = true;
 	// printf("Current name: %s, %p, %p, (rdi): %p, (rip): %p, (parent rip): %p, (tid): %d\n", current->name, if_.rsp, if_.R.rbp, if_.R.rdi, if_.rip, parent->tf.rip, current->tid);
 
 	// /* 1. Read the cpu context to local stack. */
@@ -340,7 +338,7 @@ process_exit (void) {
 		// Remove and close all the files
 		for(struct list_elem *e = list_begin(&curr->files); e != list_end(&curr->files);) {
 			struct file_information *file_info = list_entry(e, struct file_information, elem);
-			close(file_info);
+			close(file_info->fd);
 			list_remove(e);
 			e = list_next(e);
 		}
@@ -463,10 +461,14 @@ load (const char *file_name, struct intr_frame *if_) {
 
 
 	/* Allocate and activate page directory. */
+	printf("Hello world1");
+
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
 		goto done;
+	printf("Hello world2");
 	process_activate (thread_current ());
+	printf("Hello world3");
 
 	char *cpy_filename = malloc(strlen(file_name) + 1);
 	strlcpy(cpy_filename, file_name, strlen(file_name) + 1);
@@ -494,18 +496,20 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: error loading executable\n", file_name);
 		goto done;
 	}
-
+	printf("Hello world4\n");
 	/* Read program headers. */
 	file_ofs = ehdr.e_phoff;
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
+		printf("Hello world6\n");
 
 		if (file_ofs < 0 || file_ofs > file_length (file))
 			goto done;
 		file_seek (file, file_ofs);
-
+		printf("Hello world7\n");
 		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;
+		printf("Hello world8\n");
 		file_ofs += sizeof phdr;
 		switch (phdr.p_type) {
 			case PT_NULL:
@@ -518,6 +522,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			case PT_DYNAMIC:
 			case PT_INTERP:
 			case PT_SHLIB:
+				printf("Hello world9\n");
 				goto done;
 			case PT_LOAD:
 				if (validate_segment (&phdr, file)) {
@@ -538,15 +543,23 @@ load (const char *file_name, struct intr_frame *if_) {
 						read_bytes = 0;
 						zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
 					}
+					printf("Hello world1000\n");
 					if (!load_segment (file, file_page, (void *) mem_page,
 								read_bytes, zero_bytes, writable))
-						goto done;
+								{
+									printf("Hello world10\n");
+									goto done;
+								}
 				}
-				else
+				else{
+printf("Hello world11\n");
 					goto done;
+				}
+					
 				break;
 		}
 	}
+	printf("Hello world5\n");
 
 	/* Set up stack. */
 
@@ -571,8 +584,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		struct pointer_elem *p = malloc(sizeof(struct pointer_elem));
 		p->pointer_address = if_->rsp;
 		list_push_front(&addrs, &p->elem);
-		memcpy(if_->rsp, token, strlen(token));
-		char *buffer = if_->rsp;
+		memcpy(&if_->rsp, token, strlen(token));
+		// char *buffer = if_->rsp;
 	 }
  
 	// Word alignment
@@ -586,7 +599,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	// Refer addrs of data
 	struct list_elem *e;
 	e = list_begin(&addrs);
-	struct pointer_elem *addr_fn = list_entry(e, struct pointer_elem, elem);
+	// struct pointer_elem *addr_fn = list_entry(e, struct pointer_elem, elem);
 	int argc = list_size(&addrs);
 
 	while(e!=list_end(&addrs)){
@@ -596,9 +609,6 @@ load (const char *file_name, struct intr_frame *if_) {
 		memcpy(if_->rsp, &addr->pointer_address, sizeof(char *));
 		e=list_next(e);
 	}
-	int buffer;
-	buffer = if_->rsp;
-	// printf("Written value is: %x, %p, %s\n", buffer, &buffer, if_->rsp);
 
 	if_->R.rsi = if_->rsp;
 	if_->R.rdi = argc;
@@ -683,10 +693,11 @@ static bool install_page (void *upage, void *kpage, bool writable);
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
+	printf("palloc hulu-\n");
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
-
+	printf("palloc --\n");
 	file_seek (file, ofs);
 	while (read_bytes > 0 || zero_bytes > 0) {
 		/* Do calculate how to fill this page.
@@ -694,17 +705,18 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
+		printf("palloc 0\n");
 		/* Get a page of memory. */
 		uint8_t *kpage = palloc_get_page (PAL_USER);
 		if (kpage == NULL)
 			return false;
-
+		printf("palloc 1\n");
 		/* Load this page. */
 		if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes) {
 			palloc_free_page (kpage);
 			return false;
 		}
+		printf("palloc 2\n");
 		memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
 		/* Add the page to the process's address space. */
@@ -713,7 +725,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 			palloc_free_page (kpage);
 			return false;
 		}
-
+		printf("palloc 3\n");
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
@@ -764,9 +776,21 @@ install_page (void *upage, void *kpage, bool writable) {
 
 static bool
 lazy_load_segment (struct page *page, void *aux) {
+	printf("lazy load segment\n");
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	struct lazy_aux *lazy_aux = (struct segment *) aux;
+		/* Load this page. */
+	size_t page_read_bytes = lazy_aux->page_read_bytes;
+
+	file_seek(lazy_aux->file, lazy_aux->ofs);
+	if (file_read (lazy_aux->file, page->frame->kva, page_read_bytes) != (int) page_read_bytes) {
+		palloc_free_page (page->kpage);
+		return false;
+	}
+	printf("palloc 2\n");
+	memset (page->frame->kva + page_read_bytes, 0, lazy_aux->page_zero_bytes);
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -786,6 +810,7 @@ lazy_load_segment (struct page *page, void *aux) {
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
+	printf("Real Hello\n");
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
@@ -798,11 +823,17 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		struct lazy_aux *aux = malloc(sizeof(struct lazy_aux));
+		aux->file = file;
+		aux->ofs = ofs;
+		aux->page_read_bytes= page_read_bytes;
+		aux->page_zero_bytes=page_zero_bytes;
+
+		printf("Real Hello2\n");
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
 					writable, lazy_load_segment, aux))
 			return false;
-
+		printf("Real Hello3\n");
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
@@ -822,6 +853,15 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
+
+	// kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+	// if (kpage != NULL) {
+	// 	success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
+	// 	if (success)
+	// 		if_->rsp = USER_STACK;
+	// 	else
+	// 		palloc_free_page (kpage);
+	// }
 	return success;
 }
 #endif /* VM */
