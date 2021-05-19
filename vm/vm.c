@@ -93,16 +93,13 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va) {
 	struct page *temp_entry = malloc(sizeof(struct page));
 	temp_entry->va = va;
-	printf("spt_find_page 1 \n");
 	struct hash_elem *e = hash_find(&spt->pages,&temp_entry->elem);
-	printf("spt_find_page 2 \n");
 	if (e==NULL){
-		printf("spt_find_page 3 \n");
+		printf("find failed \n");
 		return NULL;
 	}
-	printf("spt_find_page 4\n");
 	struct page *page = hash_entry(e, struct page, elem);
-	printf("spt_find_page 5\n");
+	printf("find succeeded \n");
 	return page;
 }
 
@@ -182,7 +179,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = malloc(sizeof(struct page));
-	printf("Hello world VM %d\n", addr);
+	printf("Hello world VM %p\n", addr);
 
 	// if(!user){
 	// 	return false;
@@ -210,11 +207,9 @@ vm_claim_page (void *va ) {
 	struct page *page = malloc(sizeof(struct page));
 	struct supplemental_page_table *spt  = &thread_current ()->spt;
 	/* TODO: Fill this function */
-	page->va = va;
-	page->writable = true;
-	bool inserted = spt_insert_page(spt, page);
+	page = spt_find_page(spt, va);
 
-	ASSERT(inserted == true);
+	ASSERT(page != NULL);
 
 	return vm_do_claim_page (page);
 }
@@ -233,7 +228,7 @@ vm_do_claim_page (struct page *page) {
 	
 	// uint64_t *mmu = pml4_create();
 	bool success = (pml4_get_page (thread_current()->pml4, page->va) == NULL
-			&& pml4_set_page (thread_current()->pml4, page->va, frame->kva, true));
+			&& pml4_set_page (thread_current()->pml4, page->va, frame->kva, page->writable));
 	printf("pml4_set_page is %d\n",success);
 	if (!success){
 		return false;

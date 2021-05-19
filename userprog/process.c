@@ -4,7 +4,6 @@
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/tss.h"
@@ -275,7 +274,7 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
-	/* If load failed, quit. */
+	printf("load succeeded ######## %d \n", success);
 
 	// Remove filename if it is in kernel 
 	if (is_user_vaddr(file_name)) {
@@ -565,15 +564,10 @@ printf("Hello world11\n");
 
 	if (!setup_stack (if_))
 		goto done;
-	printf("after setup_stack\n");
+	
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
-
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-	 // #1 breaking the string
 	
-
    	char *token, *save_ptr;
 	list_init(&addrs);
 	
@@ -587,14 +581,12 @@ printf("Hello world11\n");
 		memcpy(if_->rsp, token, strlen(token));
 		// char *buffer = if_->rsp;
 	 }
- 
 	// Word alignment
 	int word_align = (if_->rsp) % sizeof(char*);
 	if_->rsp -= word_align;
 	memset(if_->rsp, 0, word_align);
 	if_->rsp -= sizeof(char *);
 	memset(if_->rsp, 0, sizeof(char *));
-
 
 	// Refer addrs of data
 	struct list_elem *e;
@@ -609,12 +601,12 @@ printf("Hello world11\n");
 		memcpy(if_->rsp, &addr->pointer_address, sizeof(char *));
 		e=list_next(e);
 	}
-
 	if_->R.rsi = if_->rsp;
 	if_->R.rdi = argc;
 	if_->rsp -= sizeof(void (*) ());
 	memset(if_->rsp, 0, sizeof(void (*) () ));
-	
+
+	printf("setting arguments\n");
 	success = true;
 
 done:
@@ -853,7 +845,9 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
+	vm_alloc_page(VM_ANON, stack_bottom, true);
 
+	struct page *page = spt_find_page (&thread_current ()->spt, stack_bottom);
 	success = vm_claim_page (stack_bottom);
 
 	if (success)
@@ -861,7 +855,7 @@ setup_stack (struct intr_frame *if_) {
 	else
 		PANIC("setup stack failed");
 
-	printf("setup_stack succeeded\n");
+	printf("setup_stack succeeded %p\n",page->va);
 	return success;
 }
 #endif /* VM */
