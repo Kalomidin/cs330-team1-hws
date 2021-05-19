@@ -24,8 +24,7 @@
         "*.inc": "c",
         "string.h": "c",
         "file.h": "c",
-        "syscall.h": "c",
-        "mmu.h": "c"
+        "syscall.h": "c"
     },
     "C_Cpp.default.compilerArgs": ["-DUSERPROG", "-DVM"]
 }

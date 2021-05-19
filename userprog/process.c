@@ -565,7 +565,7 @@ printf("Hello world11\n");
 
 	if (!setup_stack (if_))
 		goto done;
-
+	printf("after setup_stack\n");
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
@@ -584,7 +584,7 @@ printf("Hello world11\n");
 		struct pointer_elem *p = malloc(sizeof(struct pointer_elem));
 		p->pointer_address = if_->rsp;
 		list_push_front(&addrs, &p->elem);
-		memcpy(&if_->rsp, token, strlen(token));
+		memcpy(if_->rsp, token, strlen(token));
 		// char *buffer = if_->rsp;
 	 }
  
@@ -780,17 +780,18 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
-	struct lazy_aux *lazy_aux = (struct segment *) aux;
+	struct lazy_aux *lazy_aux = (struct lazy_aux *) aux;
 		/* Load this page. */
 	size_t page_read_bytes = lazy_aux->page_read_bytes;
-
 	file_seek(lazy_aux->file, lazy_aux->ofs);
-	if (file_read (lazy_aux->file, page->frame->kva, page_read_bytes) != (int) page_read_bytes) {
-		palloc_free_page (page->kpage);
+	if (file_read (lazy_aux->file, page->frame->kva, page_read_bytes) != (off_t) page_read_bytes) {
+		palloc_free_page (page->frame->kva);
 		return false;
 	}
 	printf("palloc 2\n");
 	memset (page->frame->kva + page_read_bytes, 0, lazy_aux->page_zero_bytes);
+
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -847,21 +848,20 @@ static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
-
+	printf("setup_stack %p\n", stack_bottom);
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
+	success = vm_claim_page (stack_bottom);
 
-	// kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-	// if (kpage != NULL) {
-	// 	success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
-	// 	if (success)
-	// 		if_->rsp = USER_STACK;
-	// 	else
-	// 		palloc_free_page (kpage);
-	// }
+	if (success)
+		if_->rsp = USER_STACK;
+	else
+		PANIC("setup stack failed");
+
+	printf("setup_stack succeeded\n");
 	return success;
 }
 #endif /* VM */
