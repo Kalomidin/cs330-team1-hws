@@ -24,6 +24,13 @@ struct child_info {
 	struct list_elem elem;
 };
 
+struct lazy_aux{
+	struct file *file;
+	off_t ofs;
+	size_t page_read_bytes;
+	size_t page_zero_bytes;
+};
+
 struct semaphore fork_sema; // Use for synchronizing fork
 
 
