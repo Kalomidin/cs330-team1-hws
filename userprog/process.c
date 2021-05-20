@@ -775,14 +775,14 @@ lazy_load_segment (struct page *page, void *aux) {
 	struct lazy_aux *lazy_aux = (struct lazy_aux *) aux;
 		/* Load this page. */
 	size_t page_read_bytes = lazy_aux->page_read_bytes;
+
 	file_seek(lazy_aux->file, lazy_aux->ofs);
 	if (file_read (lazy_aux->file, page->frame->kva, page_read_bytes) != (off_t) page_read_bytes) {
 		palloc_free_page (page->frame->kva);
 		return false;
 	}
-	printf("palloc 2\n");
 	memset (page->frame->kva + page_read_bytes, 0, lazy_aux->page_zero_bytes);
-
+	printf("palloc 2\n");
 	return true;
 }
 
@@ -845,9 +845,7 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
-	vm_alloc_page(VM_ANON, stack_bottom, true);
-
-	struct page *page = spt_find_page (&thread_current ()->spt, stack_bottom);
+	vm_alloc_page(VM_ANON + VM_MARKER_0, stack_bottom, true);
 	success = vm_claim_page (stack_bottom);
 
 	if (success)
@@ -855,7 +853,8 @@ setup_stack (struct intr_frame *if_) {
 	else
 		PANIC("setup stack failed");
 
-	printf("setup_stack succeeded %p\n",page->va);
+	struct page *page = spt_find_page (&thread_current ()->spt, stack_bottom);
+	printf("setup_stack succeeded %p, writable %d\n",page->va, page->writable);
 	return success;
 }
 #endif /* VM */

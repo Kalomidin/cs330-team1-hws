@@ -49,7 +49,7 @@ static struct frame *vm_evict_frame (void);
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
-	printf("vm_alloc_page_with_initializer\n");
+	printf("vm_alloc_page_with_initializer, writable %d\n", writable);
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
@@ -65,6 +65,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		printf("vm_type is %d\n",type);
 		switch(type)
 		{
+			case (VM_ANON + VM_MARKER_0):
 			case VM_ANON:
 				uninit_new(page, upage, init, type, aux, anon_initializer);
 				break;
@@ -79,7 +80,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		}
 
 		
-		printf("Hello again1\n");
+		printf("Hello again1  %d\n");
 		/* TODO: Insert the page into the spt. */
 		return spt_insert_page (spt, page);
 	}
@@ -98,9 +99,8 @@ spt_find_page (struct supplemental_page_table *spt, void *va) {
 		printf("find failed \n");
 		return NULL;
 	}
-	struct page *page = hash_entry(e, struct page, elem);
 	printf("find succeeded \n");
-	return page;
+	return hash_entry(e, struct page, elem);
 }
 
 /* Insert PAGE into spt with validation. */
@@ -125,7 +125,7 @@ static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
 	 /* TODO: The policy for eviction is up to you. */
-
+	// Beware this function needs careful synchronization
 	return victim;
 }
 
@@ -135,7 +135,7 @@ static struct frame *
 vm_evict_frame (void) {
 	struct frame *victim UNUSED = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
-
+	// pml4_clear_page
 	return NULL;
 }
 
@@ -147,7 +147,6 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = malloc(sizeof(struct frame));
 	/* TODO: Fill this function. */
-	printf("PAL_USER is %d\n",PAL_USER);
 	void *kpage = palloc_get_page(PAL_USER);
 	
 	if(kpage==NULL){
@@ -173,22 +172,41 @@ vm_handle_wp (struct page *page UNUSED) {
 }
 
 
+bool is_valid(void *ptr) {
+	if (ptr == NULL || is_kernel_vaddr(ptr) || pml4_get_page(thread_current()->pml4, ptr) == NULL) {
+		return false;
+	}
+	return true;
+}
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
+		bool user UNUSED, bool write UNUSED, bool not_present) {
+	struct supplemental_page_table *spt  = &thread_current ()->spt;
 	struct page *page = malloc(sizeof(struct page));
-	printf("Hello world VM %p\n", addr);
-
-	// if(!user){
-	// 	return false;
-	// }
+	void *fault_addr = pg_round_down(addr);
+	printf("vm_try_handle_fault %p %p\n", addr, fault_addr);
+	printf("user %d\n", user);
+	if(!not_present){
+		printf("not present\n");
+		return false;
+	}
+	//  Stack growth on demand. Calling vm_stack_growth
+	void *rsp = user ? f->rsp :thread_current ()->rsp;
+	if(rsp>KERN_BASE){
+		printf("kernal memory %p", rsp);
+		return false;
+	}
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	// allocate in the stack
-	page = spt_find_page (spt, addr);
-	printf("page find in fault handle %d\n", page == NULL);
+	page = spt_find_page (spt, fault_addr);
+
+	if (page == NULL){
+		printf("page is not found \n");
+		return false;
+	}
+	
 	return vm_do_claim_page (page);
 }
 
@@ -208,7 +226,7 @@ vm_claim_page (void *va ) {
 	struct supplemental_page_table *spt  = &thread_current ()->spt;
 	/* TODO: Fill this function */
 	page = spt_find_page(spt, va);
-
+	printf("writable %d\n", page->writable);
 	ASSERT(page != NULL);
 
 	return vm_do_claim_page (page);
@@ -228,7 +246,7 @@ vm_do_claim_page (struct page *page) {
 	
 	// uint64_t *mmu = pml4_create();
 	bool success = (pml4_get_page (thread_current()->pml4, page->va) == NULL
-			&& pml4_set_page (thread_current()->pml4, page->va, frame->kva, page->writable));
+			&& pml4_set_page (thread_current()->pml4, page->va, frame->kva, true));
 	printf("pml4_set_page is %d\n",success);
 	if (!success){
 		return false;

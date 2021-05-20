@@ -72,6 +72,10 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f) {
 	int rax = f->R.rax;
+
+	// Save rsp to the current thread for page fault handling
+	thread_current()->rsp = f->rsp;
+
 	switch (rax)
 	{
 	/* Projects 2 and later. */
