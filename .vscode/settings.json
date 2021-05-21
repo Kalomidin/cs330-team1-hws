@@ -25,7 +25,8 @@
         "string.h": "c",
         "file.h": "c",
         "syscall.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "debug.h": "c"
     },
     "C_Cpp.default.compilerArgs": ["-DUSERPROG", "-DVM"]
 }
