@@ -23,6 +23,10 @@
 #include "vm/vm.h"
 #endif
 
+#ifdef VM
+struct lock kill_lock;
+#endif
+
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
@@ -46,7 +50,11 @@ tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
 	tid_t tid;
-	
+
+#ifdef VM
+	lock_init(&kill_lock);
+#endif
+
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
@@ -174,6 +182,8 @@ __do_fork (void *aux) {
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 
+	printf("Parent and child id: %d, %d\n", parent->tid, current->tid);
+
 	struct intr_frame *parent_if = &parent->tf;
 
 	// struct intr_frame *parent_if = malloc(sizeof(struct intr_frame));
@@ -204,8 +214,10 @@ __do_fork (void *aux) {
 
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
-	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
+	if (!supplemental_page_table_copy (&current->spt, &parent->spt)) {
+		printf("Copy failure\n");
 		goto error;
+	}
 #else
 
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
@@ -350,7 +362,9 @@ process_cleanup (void) {
 	struct thread *curr = thread_current ();
 
 #ifdef VM
+	lock_acquire(&kill_lock);
 	supplemental_page_table_kill (&curr->spt);
+	lock_release(&kill_lock);
 #endif
 
 	uint64_t *pml4;
@@ -742,7 +756,7 @@ install_page (void *upage, void *kpage, bool writable) {
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
-static bool
+bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */

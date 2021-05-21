@@ -6,6 +6,11 @@
 #include "hash.h"
 #include "threads/mmu.h"
 #include <stdio.h>
+#include "userprog/process.h"
+
+
+#define list_elem_to_hash_elem(LIST_ELEM)                       \
+	list_entry(LIST_ELEM, struct hash_elem, list_elem)
 
 
 
@@ -57,7 +62,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initializer according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
-		struct page *page = malloc(sizeof(struct page));
+		struct page *page = palloc_get_page(0);
 		
 		switch(type)
 		{
@@ -76,11 +81,14 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		}
 		page->writable = writable;
 		page->type = type;
+
+		printf("Inserting to spt\n");
 		
 		/* TODO: Insert the page into the spt. */
 		return spt_insert_page (spt, page);
 	}
 err:
+	printf("Returning false because found\n");
 	return false;
 }
 
@@ -275,15 +283,57 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 	hash_init(&spt->pages,spte_hash_func, spte_less_func, NULL);
 }
 
+
 /* Copy supplemental page table from src to dst */
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+		struct supplemental_page_table *src) {
+	printf("#################### copy\n");
+	size_t i;
+	struct hash h = src->pages;
+
+	for (i = 0; i < h.bucket_cnt; i++) {
+		struct list *bucket = &h.buckets[i];
+		struct list_elem *elem, *next;
+
+		for (elem = list_begin (bucket); elem != list_end (bucket); elem = next) {
+			next = list_next (elem);
+			struct hash_elem *e = list_elem_to_hash_elem (elem);
+			struct page *page = palloc_get_page(0);
+			page = hash_entry(e, struct page, elem);
+			
+			if (!vm_alloc_page_with_initializer(page->type,
+			page->va, page->writable, page->uninit.init, page->uninit.aux)){
+				printf("false\n");
+				return false;
+				}
+		}
+	}
+	printf("#################### copy 2\n");
+
+	return true;
 }
+
+static void descriptor(struct hash_elem *e, void *aux);
 
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	printf("#################### kill %d\n", thread_current()->tid);
+	
+	if( hash_size(&spt->pages) == 0) {
+		return;
+	}
+
+	hash_destroy (&spt->pages, descriptor);
+	printf("#################### kil2 %d\n", thread_current()->tid);
+
+	// TODO
+}
+
+static void descriptor(struct hash_elem *e, void *aux){
+	struct page *page = hash_entry(e, struct page, elem);
+	destroy(page);
 }

@@ -9,6 +9,7 @@
  * */
 
 #include "vm/vm.h"
+#include "vm/anon.h"
 #include "vm/uninit.h"
 
 static bool uninit_initialize (struct page *page, void *kva);
@@ -62,7 +63,19 @@ uninit_initialize (struct page *page, void *kva) {
 static void
 uninit_destroy (struct page *page) {
 	struct uninit_page *uninit UNUSED = &page->uninit;
-	return;
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
+
+	switch (uninit->type)
+	{
+	case VM_ANON:
+		destroy(page);
+		break;
+	case VM_FILE:
+		break;
+	default:
+		break;
+	}
+	return;
+
 }
