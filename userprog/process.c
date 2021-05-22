@@ -83,7 +83,7 @@ process_create_initd (const char *file_name) {
 /* A thread function that launches first user process. */
 static void
 initd (void *f_name) {
-#ifdef VM
+#ifndef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
 
@@ -121,7 +121,7 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	return pid;
 }
 
-#ifndef VM
+#ifdef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
 static bool
@@ -207,7 +207,7 @@ __do_fork (void *aux) {
 
 	process_activate (current);
 
-#ifdef VM
+#ifndef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
@@ -355,7 +355,7 @@ static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
 
-#ifdef VM
+#ifndef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
 
@@ -658,7 +658,7 @@ validate_segment (const struct Phdr *phdr, struct file *file) {
 	return true;
 }
 
-#ifndef VM
+#ifdef VM
 /* Codes of this block will be ONLY USED DURING project 2.
  * If you want to implement the function for whole project 2, implement it
  * outside of #ifndef macro. */

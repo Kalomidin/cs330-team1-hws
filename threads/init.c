@@ -112,7 +112,7 @@ main (void) {
 	filesys_init (format_filesys);
 #endif
 
-#ifdef VM
+#ifndef VM
 	vm_init ();
 #endif
 
