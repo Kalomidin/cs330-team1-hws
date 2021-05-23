@@ -9,6 +9,9 @@
 #include "userprog/process.h"
 #include "string.h"
 
+#define STACK_SIZE (1 << 20)
+#define	PHYS_BASE ((void *) LOADER_PHYS_BASE)
+#define LOADER_PHYS_BASE 0x200000
 
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -161,8 +164,20 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
+static bool
 vm_stack_growth (void *addr UNUSED) {
+	// printf("stack growth %p \n", addr);
+	// ASSERT(false);
+	struct frame *frame = vm_get_frame ();
+	ASSERT(frame);
+	/* Add the page to the process's address space. */
+	if (!pml4_set_page (thread_current ()->pml4, pg_round_down (addr), frame->kva, true))
+	{	
+		palloc_free_page (frame->kva);
+		return false;
+	}
+	// printf("vm_stack_growth finished ### \n");
+	return true;
 }
 
 /* Handle the fault on write_protected page */
@@ -183,31 +198,32 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 		bool user UNUSED, bool write UNUSED, bool not_present) {
 	struct supplemental_page_table *spt  = &thread_current ()->spt;
 	struct page *page = calloc(1, sizeof(struct page));
-	void *fault_addr = pg_round_down(addr);
-	// // printf("vm_try_handle_fault %p %p %p\n", addr, fault_addr, f->rsp);
-	// // printf("user %d\n", user);
+	uint64_t fault_addr = pg_round_down(addr);
+	void *rsp = user ? f->rsp :thread_current ()->rsp;
 
 	if((addr == NULL || !not_present) ||  addr >= KERN_BASE ){
 		// // printf("invalid address: null %d, not_present %d, LOADER_KERN_BASE %d, addr higher than kernbase %d \n",fault_addr == NULL,!not_present, addr >= KERN_BASE);
 		return false;
 	}
-	//  Stack growth on demand. Calling vm_stack_growth
-	// void *rsp = user ? f->rsp :thread_current ()->rsp;
-	// if(rsp>KERN_BASE){
-	// 	return false;
-	// }
 	
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	// allocate in the stack
 	page = spt_find_page (spt, fault_addr);
+	
 
-	if (page == NULL){
-		// // printf("page is not found \n");
+	uint64_t fd_addr = (uint64_t) addr;
+	uint64_t diff = USER_STACK - fault_addr;
+	// printf("User: %lx, Kernel: %lX, fault_addr: %lX, diff: %lx\n", PHYS_BASE, KERN_BASE, fd_addr, diff);
+
+	if(page != NULL) {
+		// !!! Need to check whether page is not claimed yet !!!
+		return vm_do_claim_page(page);
+	} else if (page == NULL && fd_addr >= (f->rsp - PGSIZE) && (PHYS_BASE - fault_addr <= STACK_SIZE)) {
+		return vm_stack_growth (fault_addr);
+	} else {
 		return false;
 	}
-	
-	return vm_do_claim_page (page);
 }
 
 /* Free the page.
