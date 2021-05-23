@@ -88,8 +88,9 @@ initd (void *f_name) {
 
 	process_init ();
 
-	if (process_exec (f_name) < 0)
+	if (process_exec (f_name) < 0){
 		PANIC("Fail to launch initd\n");
+	}
 	NOT_REACHED ();
 }
 
@@ -459,9 +460,11 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Allocate and activate page directory. */
 
 	t->pml4 = pml4_create ();
+
 	if (t->pml4 == NULL)
 		goto done;
 	process_activate (thread_current ());
+
 
 	char *cpy_filename = malloc(strlen(file_name) + 1);
 	strlcpy(cpy_filename, file_name, strlen(file_name) + 1);
@@ -489,6 +492,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		/**/printf ("load: %s: error loading executable\n", file_name);
 		goto done;
 	}
+
+
 	/* Read program headers. */
 	file_ofs = ehdr.e_phoff;
 	for (i = 0; i < ehdr.e_phnum; i++) {
@@ -534,6 +539,7 @@ load (const char *file_name, struct intr_frame *if_) {
 					if (!load_segment (file, file_page, (void *) mem_page,
 								read_bytes, zero_bytes, writable))
 								{
+									printf("Failed in load seg\n");
 									goto done;
 								}
 				}
@@ -546,9 +552,10 @@ load (const char *file_name, struct intr_frame *if_) {
 	}
 
 	/* Set up stack. */
-
+	// printf("Setting up the stack\n");
 	if (!setup_stack (if_))
 		goto done;
+	// printf("Stack setted up the stack\n");
 	
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
@@ -793,7 +800,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
 		struct lazy_aux *aux = palloc_get_page(PAL_ZERO | PAL_USER);
 		ASSERT(aux);

@@ -348,6 +348,7 @@ intr_handler (struct intr_frame *frame) {
 
 	/* Invoke the interrupt's handler. */
 	handler = intr_handlers[frame->vec_no];
+
 	if (handler != NULL)
 		handler (frame);
 	else if (frame->vec_no == 0x27 || frame->vec_no == 0x2f) {

@@ -15,6 +15,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
+#include "string.h"
 
 #define MAX_GENERATION 10
 
@@ -29,6 +30,7 @@ struct file* get_file_from_fd(int fd);
 int dup2(int oldfd, int newfd);
 
 void is_safe_access(void *ptr) {
+	// printf("Ptr is pml4 page: %p, %d\n", ptr, pml4_get_page(thread_current()->pml4, ptr) == NULL);
 	if (ptr == NULL || is_kernel_vaddr(ptr) || pml4_get_page(thread_current()->pml4, ptr) == NULL) {
 		exit(-1);
 	}
@@ -245,6 +247,7 @@ int exec(const char *cmd_line) {
 	cf->sema = thread_current()->sema;
 	cf->exit_status = thread_current()->exit_status;
 	tid_t pid =  process_exec(cf);
+	// printf("Pid is: %d\n", pid);
 	return pid;
 }
 
@@ -308,6 +311,9 @@ int filesize (int fd){
 	return length;
 };
 int read(int fd, void *buffer, unsigned size){
+	char *a = malloc(sizeof(int));
+	memcpy (a , buffer, sizeof(int));
+
 	is_safe_access(buffer);
 	int response = 0;
 	if (fd == 0) {
