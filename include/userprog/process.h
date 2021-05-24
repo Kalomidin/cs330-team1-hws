@@ -29,6 +29,7 @@ struct lazy_aux{
 	off_t ofs;
 	size_t page_read_bytes;
 	size_t page_zero_bytes;
+	bool is_file;
 };
 
 struct semaphore fork_sema; // Use for synchronizing fork
@@ -39,5 +40,7 @@ int process_exec (void *f_name);
 int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
+bool
+lazy_load_segment (struct page *page, void *aux);
 
 #endif /* userprog/process.h */

@@ -17,6 +17,7 @@ test_main (void)
 
   CHECK ((handle = open ("sample.txt")) > 1, "open \"sample.txt\"");
   CHECK ((map = mmap (ACTUAL, 0x2000, 0, handle, 0)) != MAP_FAILED, "mmap \"sample.txt\"");
+  printf("Finished mapping\n");
   msg ("memory is readable %d", *(int *) ACTUAL);
   msg ("memory is readable %d", *(int *) ACTUAL + 0x1000);
 

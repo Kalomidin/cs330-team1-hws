@@ -21,9 +21,22 @@
 
 static fd_counter;
 
-
+static struct file* get_file_from_fd(int fd);
 static struct lock fd_counter_lock;
 
+
+void* mmap (void *addr, size_t length, int writable, int fd, off_t offset){
+	struct file *file = get_file_from_fd(fd);
+	if (file == NULL) {
+		return NULL;
+	}
+	void * response = do_mmap(addr, length, writable, file, offset);
+	return response;
+}
+
+void munmap (void *addr){
+	return;
+}
 
 int add_new_file_to_fd_list(struct file *fl);
 struct file* get_file_from_fd(int fd);
@@ -35,6 +48,7 @@ void is_safe_access(void *ptr) {
 		exit(-1);
 	}
 }
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -178,23 +192,21 @@ syscall_handler (struct intr_frame *f) {
 		close(fd);
 		break;
 	}
-	/* Extra for Project 2 */ 
-	// case SYS_DUP2:                   /* Duplicate the file descriptor */
-	// {
-	// 	// int oldfd = f->R.rdi; 
-	// 	// int newfd = f->R.rsi;
-	// 	// f->R.rax =  dup2(oldfd, newfd);
-	// 	break;
-	// }
+	case SYS_MMAP: {
+		// printf("rdi:%p , rsi: %d, rdx: %d, rcx: %d,r8: %d\n", f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+		break;
+	}                 
+	case SYS_MUNMAP:{
+		munmap(f->R.rdi);
+		break;
+	}                 /* Remove a memory mapping. */
 	default:
 		thread_exit();
 	}
 
 }
 
-// int dup2(int oldfd, int newfd) {
-// 	return -1;
-// }
 
 void halt(void) {
 	power_off();
@@ -313,8 +325,13 @@ int filesize (int fd){
 int read(int fd, void *buffer, unsigned size){
 	char *a = malloc(sizeof(int));
 	memcpy (a , buffer, sizeof(int));
-
 	is_safe_access(buffer);
+	struct page *page = spt_find_page( &thread_current()->spt, pg_round_down(buffer));
+	// printf("Page is: %d", page == NULL);
+	if(page != NULL && !page->writable) {
+		exit(-1);
+	}
+
 	int response = 0;
 	if (fd == 0) {
 		lock_acquire(&prcs_lock);
@@ -426,6 +443,7 @@ struct file* get_file_from_fd(int fd) {
 
 	for(struct list_elem *e = list_begin(&curr->files); e != list_end(&curr->files); e = list_next(e)) {
 		struct file_information *a = list_entry(e, struct file_information, elem);
+
 		if (a->fd == fd) {
 			return a->file;
 		}

@@ -1,6 +1,8 @@
 /* file.c: Implementation of memory backed file object (mmaped object). */
 
 #include "vm/vm.h"
+#include "userprog/process.h"
+#include "threads/vaddr.h"
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -50,6 +52,29 @@ file_backed_destroy (struct page *page) {
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
+	
+	if (length == 0) {
+		return NULL;
+	}
+	if(is_kernel_vaddr(addr)) {
+		return NULL;
+	}
+
+	struct lazy_aux *aux = palloc_get_page(PAL_ZERO | PAL_USER);
+	ASSERT(aux);
+	aux->file = file;
+	aux->ofs = offset;
+	aux->page_read_bytes= length;
+	aux->page_zero_bytes= PGSIZE - length;
+	aux->is_file = true;
+	
+	if (!vm_alloc_page_with_initializer(VM_ANON, addr, writable, lazy_load_segment, aux)) {
+		return NULL;
+	}
+	if(!vm_claim_page(addr)) {
+		return NULL;
+	}
+	return addr;
 }
 
 /* Do the munmap */

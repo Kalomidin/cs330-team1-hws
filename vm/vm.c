@@ -9,11 +9,6 @@
 #include "userprog/process.h"
 #include "string.h"
 
-#define STACK_SIZE (1 << 20)
-#define	PHYS_BASE ((void *) LOADER_PHYS_BASE)
-#define LOADER_PHYS_BASE 0x200000
-
-
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -58,15 +53,15 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	ASSERT(spt);
 	
-	// // printf("Upage addrs: %p\n", upage);
-	// printf("Find page stage: %d\n", hash_size(&spt->pages));
+	// // // printf("Upage addrs: %p\n", upage);
+	// // printf("Find page stage: %d\n", hash_size(&spt->pages));
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
 		/* TODO: Create the page, fetch the initializer according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
 		struct page *page = calloc(1, sizeof(struct page));
-		// printf("Found a page\n");
+		// // printf("Found a page\n");
 
 		switch(type)
 		{
@@ -89,7 +84,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		return spt_insert_page (spt, page);
 	}
 err:
-	// printf("Returned false\n");
+	// // printf("Returned false\n");
 	return false;
 }
 
@@ -110,7 +105,6 @@ bool
 spt_insert_page (struct supplemental_page_table *spt ,
 		struct page *page ) {
 	/* TODO: Fill this function. */
-	ASSERT(page);
 	struct hash_elem *e = hash_insert(&spt->pages, &page->elem);
 	return  e== NULL;
 }
@@ -152,7 +146,6 @@ vm_get_frame (void) {
 	
 	if(kpage==NULL){
 		PANIC("get_frame_fail");
-		return vm_evict_frame();
 	}
 
 	frame->kva = kpage;
@@ -166,17 +159,17 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static bool
 vm_stack_growth (void *addr UNUSED) {
-	// printf("stack growth %p \n", addr);
+	// // printf("stack growth %p \n", addr);
 	// ASSERT(false);
 	struct frame *frame = vm_get_frame ();
 	ASSERT(frame);
 	/* Add the page to the process's address space. */
-	if (!pml4_set_page (thread_current ()->pml4, pg_round_down (addr), frame->kva, true))
+	if (!pml4_set_page (thread_current ()->pml4, addr, frame->kva, true))
 	{	
 		palloc_free_page (frame->kva);
 		return false;
 	}
-	// printf("vm_stack_growth finished ### \n");
+	// // printf("vm_stack_growth finished ### \n");
 	return true;
 }
 
@@ -202,28 +195,29 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 	void *rsp = user ? f->rsp :thread_current ()->rsp;
 
 	if((addr == NULL || !not_present) ||  addr >= KERN_BASE ){
-		// // printf("invalid address: null %d, not_present %d, LOADER_KERN_BASE %d, addr higher than kernbase %d \n",fault_addr == NULL,!not_present, addr >= KERN_BASE);
 		return false;
 	}
 	
+
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 	// allocate in the stack
+   
+   
+
 	page = spt_find_page (spt, fault_addr);
-	
 
-	uint64_t fd_addr = (uint64_t) addr;
-	uint64_t diff = USER_STACK - fault_addr;
-	// printf("User: %lx, Kernel: %lX, fault_addr: %lX, diff: %lx\n", PHYS_BASE, KERN_BASE, fd_addr, diff);
 
-	if(page != NULL) {
+	if(page != NULL ) {
 		// !!! Need to check whether page is not claimed yet !!!
 		return vm_do_claim_page(page);
-	} else if (page == NULL && fd_addr >= (f->rsp - PGSIZE) && (PHYS_BASE - fault_addr <= STACK_SIZE)) {
-		return vm_stack_growth (fault_addr);
-	} else {
-		return false;
 	}
+	uintptr_t p = (uintptr_t)addr;
+	if ( page==NULL && ( rsp < p || 8 >= rsp - p)) {
+		return vm_stack_growth(fault_addr);
+   	}
+	return false;
+
 }
 
 /* Free the page.
@@ -251,55 +245,44 @@ static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
 	ASSERT(frame);
-	// // printf("vm_do_claim_page\n");
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	ASSERT(thread_current()->pml4);
-	// // printf("Thread id: va page: %d, %p\n", thread_current()->tid, page->va);
-	// printf("Thread id: va page: %d, %d\n", thread_current()->tid, pml4_get_page (thread_current()->pml4, page->va) == NULL);
 
-	// uint64_t *mmu = pml4_create();
 	bool success = (pml4_get_page (thread_current()->pml4, page->va) == NULL
 			&& pml4_set_page (thread_current()->pml4, page->va, frame->kva, page->writable));
-	// // printf("pml4_set_page is %d\n",success);
 	if (!success){
 		return false;
 	}
 	page->type = page_get_type(page);
 	ASSERT(page->type);
-	// // printf("claim success\n");
 	return swap_in (page, frame->kva);
 }
 
-// Hash Functions required for [frame_map]. Uses 'kaddr' as key.
 static uint64_t
-spte_hash_func(const struct hash_elem *eleme, void *aux UNUSED)
+check_hash_f(const struct hash_elem *eleme, void *aux UNUSED)
 {
-  struct page *entry = hash_entry(eleme, struct page, elem);
-  ASSERT(entry);
-  return hash_int( (uint64_t)entry->va );
+  struct page *e = hash_entry(eleme, struct page, elem);
+  return hash_int( (uint64_t)e->va );
 }
+
 static bool
-spte_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
+check_less_f(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
-  struct page *a_entry = hash_entry(a, struct page, elem);
-  struct page *b_entry = hash_entry(b, struct page, elem);
-  ASSERT(a_entry);
-  ASSERT(b_entry);
-  // printf("Less checke\n");
-  // printf("Less and up: %p, %p\n", a_entry->va, b_entry->va);
-  return a_entry->va < b_entry->va;
+  struct page *left = hash_entry(a, struct page, elem);
+  struct page *right = hash_entry(b, struct page, elem);
+
+  return left->va < right->va;
 }
 
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
-	// // printf("spt initialize \n");
 	ASSERT(spt);
-	hash_init(&spt->pages,spte_hash_func, spte_less_func, NULL);
+	hash_init(&spt->pages,check_hash_f, check_less_f, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
@@ -318,7 +301,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		new_page->operations = page->operations;
 		new_page->uninit = page->uninit;
 		new_page->va = page->va;
-		// new_page->uninit.init = NULL;
 
 		switch (page->operations->type)
 		{
@@ -334,8 +316,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 				NOT_REACHED();
 				break;
 			}
-			// // printf("Vm uninit in spt copy\n");
-			// swap_in(new_page, new_page->va);
+			
 			if(!spt_insert_page(dst, new_page)) {
 				return false;
 			}
